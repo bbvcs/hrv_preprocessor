@@ -1,7 +1,7 @@
 # HRV Calculation w/ Preprocessing in Python
 Python Script to calculate Time and Frequency Domain HRV metrics for segments of a long-term recording of ECG (e.g, HRV per 5min ECG segment over 7 days of continuous ECG recording), with certain preprocessing techniques (detailed below) to attempt to clean-up each segment prior to HRV processing. HRV metrics are saved to a .csv file per-segment, alongside a .csv providing some limited information on how each segment was modified.
 
-DISCLAIMER: This is a work in progress; the techniques used to attempt to remove noise & ectopy are far from perfected and certainly not tested enough - for example, some of the constants involved are fairly arbitrary. Please feel free to improve this. Use at your own risk.
+DISCLAIMER: This is a work in progress; the techniques used to attempt to remove noise & ectopy are far from perfected and certainly not tested enough - for example, some of the constants involved are fairly arbitrary. Please feel free to improve this. Use at your own risk, for educational/research purposes only.
 
 
 
@@ -17,21 +17,16 @@ Example outputs from Subject "A01" are available in the "*out*" directory of thi
 ### Setup and Running
 I would recommend running on an Ubuntu/Debian based OS (should work with any Linux OS and macOS though), with at least Python 3.8 installed.
 
-1. Grab the TrainingSet Data from the link above (see **Data**), and extract the .zip into the same directory as the scripts; there should be a directory "*TrainingSet*", with a subdirectory "*data*"
+1. Download the TrainingSet Data from the link above (see **Data**), and extract the .zip into the same directory as the scripts; there should be a directory "*TrainingSet*", with a subdirectory "*data*"
 	- If you want to use your own data, inspect "**example_usage.py**", and modify so it loads your ECG data as a 1D NumPy array "*ecg*"
 2. Enter the following commands: `pipenv shell`, followed by `pipenv update`. This will setup a pipenv virtual environment, and install all necessary packages for the python scripts. Pipenv combines the "pip" python package manager and the "venv" virtual environment tool. Pipenv uses a "Pipfile" to keep track of dependencies for the project, this file is provided in this repository. For more info on pipenv (and how to install if you don't have it): https://pipenv.pypa.io/en/latest/
 3. Once you're in a pipenv shell, run *example_usage.py* using `python3.8 -i example_usage.py` (`-i` is optional, but will allow you to have the dataframes in an interactive shell once complete, so you can try out some more plots)
 
 ### How Preprocessing and HRV Calculation Works
 1. Break the ECG into n-minute long segments (by default, 5min)
-    - Going from the first timestamp in the data, a list of segment intervals/onsets are produced; take a timestamp, determine what the timestamp 5 minutes after this timestamp would be.
-    - So, timestamps in this list may/may not actually be in the data.
-    - To work out the timestamps in each 5 min segment that are actually in the data, take 2 successive onset timestamps, and find timestamps in the data between these 2 values.
-    - So due to different sample rates between different metrics, there may be a slightly different number of readings in each segment.
-        - But, for example, if you only take readings of a particular metric (e.g ECG) in each segment, the number readings per segment should be fairly similar.
 2. For each segment:
     - Use Empirical Mode Decomposition (EMD) to remove low-frequency drift from/straighten-out the signal, intended to help the R peak detection algorithm.
-    - Use an R peak detection algorithm provided by *biosppy* (I'm currently using EngZee, but many others are available - Christov & Hamilton's also look good)
+    - Use an R peak detection algorithm provided by *biosppy* (EngZee by default, but many others are available - Christov & Hamilton's also look good. Can be set using a parameter. See biosppy.signals.ecg documentation for more detail.)
     - Use *biosppy*'s rpeak correction - this basically just moves the detected R peak to a local maximum in the ECG signal, useful as sometimes the detection algorithm misses it slightly (e.g places it on the T wave)
     - Attempt to remove R peaks that may have mistakenly been placed on a noisy QRS complex.
         - *biosppy* provides a function to get the "templates" - the ECG snippets associated with each R peak it detected.
