@@ -74,7 +74,7 @@ I would recommend running on an Ubuntu/Debian based OS (should work with any Lin
     - CSVs for Segment Start Time ID -> Time/Frequency Domain Metrics (seperately)
         - Note - ignore Time Domain SDNN and TINN; these cannot be calculated currently (SDNN requires 24 hour long data, *pyHRV* throws a warning that a bug is causing TINN values to be incorrectly calculated) (I'll remove these at some point, and make the HRV CSV's more nicely formatted)
     - **Modifications CSV**; for each Segment, was it excluded or not (T/F), what was the number of noisy QRS, what was the number of RRI determined as spikes/outliers in the HRV Signal, and some brief notes if it was excluded.
-	- Note, `hrv_per_segment()` by default (can be disabled via a parameter) saves a diagram of the ECG & HRV per segment (with corrections visible) to saved_plots; useful for brief inspection to see how the code performed, but due to a reduction in size when saving a plot to image and lack of zooming, not very useful for debugging - change this to `plt.show()` for these purposes.
+	- Note, `hrv_per_segment()` by default (can be disabled via a parameter) saves a diagram of the ECG & HRV per segment (with corrections visible) to saved_plots; useful for brief inspection to see how the code performed, but due to a reduction in size when saving a plot to image and lack of zooming, not very useful for debugging - change this to `plt.show()` for this.
 
 ### Methods available:
 This script can be used like a library - see how this is done in `example_usage.py`.

@@ -44,6 +44,9 @@ def hrv_per_segment(ecg_segment, ecg_srate, timevec=None, segment_idx=0,
         MAX_RRI_MS:                         (float)             A maximum RRI value - to catch some RRI outliers quickly; if any RRI are too large to be natural, remove.
 
     Returns:
+        - rpeaks and rri used for HRV calculation
+            - if remove_noisy_beats is true, returned rpeaks will have had outliers removed
+            - if remove_noisy_RRI is true, returned RRI will have had spikes interpolated
         - a tuple of (freq_dom_hrv, time_dom_hrv, modification_report) where:
             - freq/time_dom_hrv are pyHRV ReturnTuples containing HRV metrics as calculated by pyHRV for this ECG.
             - modification_report is a dict containing some info on what has been doen to the segment (noise removal), whether it was excluded, some notes etc
@@ -86,7 +89,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, timevec=None, segment_idx=0,
         modification_report["notes"] = "Not enough data recorded in this segment interval"
  
 
-        return freq_dom_hrv, time_dom_hrv, modification_report
+        return None, None, freq_dom_hrv, time_dom_hrv, modification_report
     # </EXIT_CONDITION>
 
 
@@ -107,7 +110,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, timevec=None, segment_idx=0,
             modification_report["excluded"] = True
             modification_report["notes"] = "Less than 3 IMFs were produced by EMD"
 
-            return freq_dom_hrv, time_dom_hrv, modification_report
+            return None, None, freq_dom_hrv, time_dom_hrv, modification_report
         # </EXIT_CONDITION>
 
 
@@ -166,7 +169,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, timevec=None, segment_idx=0,
             modification_report["excluded"] = True
             modification_report["notes"] = "Segmenter detected no Rpeaks"
 
-            return freq_dom_hrv, time_dom_hrv, modification_report
+            return None, None, freq_dom_hrv, time_dom_hrv, modification_report
         # </EXIT_CONDITION>
 
 
@@ -246,7 +249,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, timevec=None, segment_idx=0,
             modification_report["n_rpeaks_noisy"] = len(noisy_beats_idx)
             modification_report["notes"] = f"No runs detected - so likely signal was all noise."
 
-            return freq_dom_hrv, time_dom_hrv, modification_report
+            return rpeaks, None, freq_dom_hrv, time_dom_hrv, modification_report
         # </EXIT_CONDITION>
 
 
@@ -268,7 +271,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, timevec=None, segment_idx=0,
             modification_report["n_rpeaks_noisy"] = len(noisy_beats_idx)
             modification_report["notes"] = f"Noisy beats {snr}"
 
-            return freq_dom_hrv, time_dom_hrv, modification_report
+            return rpeaks, None, freq_dom_hrv, time_dom_hrv, modification_report
         # </EXIT_CONDITION>
 
        
@@ -280,7 +283,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, timevec=None, segment_idx=0,
             modification_report["n_rpeaks_noisy"] = len(noisy_beats_idx)
             modification_report["notes"] = "No rpeaks left after noisy rpeaks removed"
 
-            return freq_dom_hrv, time_dom_hrv, modification_report
+            return rpeaks, None, freq_dom_hrv, time_dom_hrv, modification_report
         # </EXIT_CONDITION>
 
 
@@ -300,7 +303,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, timevec=None, segment_idx=0,
         modification_report["n_RRI_detected"] = len(rri)
         modification_report["notes"] = "Sum of RRI was less than 2Mins"
 
-        return freq_dom_hrv, time_dom_hrv, modification_report
+        return rpeaks, rri, freq_dom_hrv, time_dom_hrv, modification_report
     # </EXIT_CONDITION>
     
     
@@ -319,7 +322,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, timevec=None, segment_idx=0,
             modification_report["n_RRI_detected"] = len(rri)
             modification_report["notes"] = "Sum of RRI in LONGEST CONSECUTIVE was less than 2Mins"
 
-            return freq_dom_hrv, time_dom_hrv, modification_report
+            return rpeaks, rri, freq_dom_hrv, time_dom_hrv, modification_report
     # </EXIT_CONDITION>
 
 
@@ -450,7 +453,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, timevec=None, segment_idx=0,
         modification_report["notes"] = "Zero Division Error (probably bug in sdnn_index()), so time domain excluded."
         time_dom_hrv = np.NaN
 
-    return freq_dom_hrv, time_dom_hrv, modification_report
+    return rpeaks, rri_corrected, freq_dom_hrv, time_dom_hrv, modification_report
 
 
 
@@ -493,7 +496,7 @@ def hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
 
         segment = ecg[onsets[i]:onsets[i+1]] # TODO will this overflow
 
-        freq_dom_hrv, time_dom_hrv, modification_report = hrv_per_segment(segment, ecg_srate, timevec=None, segment_idx = i,
+        rpeaks, rri, freq_dom_hrv, time_dom_hrv, modification_report = hrv_per_segment(segment, ecg_srate, timevec=None, segment_idx = i,
                     save_plots=save_plots, save_plots_dir=save_plots_dir, save_plot_filename=f"Segment #{i}",
                     use_emd=use_emd, use_segmenter=use_segmenter, remove_noisy_beats=remove_noisy_beats, remove_noisy_RRI=remove_noisy_RRI, rri_in_ms = rri_in_ms,
                     QRS_MAX_DIST_THRESH = QRS_MAX_DIST_THRESH, RRI_OUTLIER_PERCENTAGE_DIFF_THRESH = RRI_OUTLIER_PERCENTAGE_DIFF_THRESH, MAX_RRI_MS = MAX_RRI_MS)
