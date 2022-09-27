@@ -1,0 +1,19 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+numpy = "*"
+matplotlib = "*"
+scipy = "*"
+pyhrv = "*"
+pandas = "*"
+biosppy = "*"
+emd = "*"
+dtw-python = "*"
+
+[dev-packages]
+
+[requires]
+python_version = "3.8"
