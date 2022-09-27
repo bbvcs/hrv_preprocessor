@@ -6,7 +6,7 @@ import math
 from scipy import io
 
 # this is the script in this repository:
-from pyhrv_preprocessor import hrv_per_segment, hrv_whole_recording, save_hrv_dataframes 
+import hrv_preprocessor
 
 if __name__ == "__main__":
 
@@ -20,13 +20,13 @@ if __name__ == "__main__":
    segment_length_min = 5
 
    # produce dataframes with hrv metrics per segment
-   time_dom_df, freq_dom_df, modification_report_df = hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
+   time_dom_df, freq_dom_df, modification_report_df = hrv_preprocessor.hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
             save_plots=False, save_plots_dir="saved_plots",
             use_emd=True, use_segmenter="engZee", remove_noisy_beats=True, remove_noisy_RRI=True, rri_in_ms = True,
             QRS_MAX_DIST_THRESH = 0.30, RRI_OUTLIER_PERCENTAGE_DIFF_THRESH = 0.30, MAX_RRI_MS = 2200 * 2) 
 
    # save the dataframes as .csv files; can load in later (pd.read_csv) and process
-   save_hrv_dataframes(time_dom_df, freq_dom_df, modification_report_df, save_dfs_dir="out")
+   hrv_preprocessor.save_hrv_dataframes(time_dom_df, freq_dom_df, modification_report_df, save_dfs_dir="out")
 
    
    # example plotting
