@@ -20,7 +20,7 @@ if __name__ == "__main__":
    ecg = io.loadmat("TrainingSet/data/A01.mat")["ecg"] # ecg just has to be a 1D NumPy Array, so load in whatever way is suitable for your data
 
 
-   segment_length_min = 5
+   segment_length_min = 5.0
 
    # produce dataframes with hrv metrics per segment
    time_dom_df, freq_dom_df, modification_report_df = hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,

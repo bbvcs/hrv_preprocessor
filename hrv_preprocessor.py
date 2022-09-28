@@ -19,7 +19,7 @@ def find_nearest(array, value):
 
             return idx
 
-def hrv_per_segment(ecg_segment, ecg_srate, timevec=None, segment_idx=0,
+def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, segment_idx=0,
                     save_plots=False, save_plots_dir=None, save_plot_filename=math.floor(time.time()),
                     use_emd=True, use_segmenter="engZee", remove_noisy_beats=True, remove_noisy_RRI=True, rri_in_ms = True,
                     QRS_MAX_DIST_THRESH = 0.30, RRI_OUTLIER_PERCENTAGE_DIFF_THRESH = 0.30, MAX_RRI_MS = 2200 * 2): 
@@ -29,6 +29,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, timevec=None, segment_idx=0,
     Args:
         ecg_segment:                        (1D NumPy Array)    A segment (tested with 5min, likely to work for other lengths) of consecutive ECG samples.
         ecg_srate:                          (int)               Sample rate that segment was recorded at (int)
+        segment_length_min:                 (float)             The length of the segment, in minutes (e.g 5.0 for 5 minutes)
         timevec:                            (1D NumPy Array)    A vector with a time value for each ecg_segment sample - defaults to range(0, len(ecg_segment))  
         segment_idx:                        (int)               The index of the segment within the recording (for writing row in dataframes) - handled automatically by hrv_whole_recording, ignore if using this directly.
         save_plots:                         (bool)              If true, save a plot of the ECG signal and corresponding HRV w/ corrections visualised.
@@ -150,7 +151,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, timevec=None, segment_idx=0,
     # how many rpeaks should we expect the alg to detect for a reflected piece of ecg_segment?
         # if lowest bpm ever achieved was 27, expect 27 peaks per min, 27*5 for 5 min
         # then use reflection order to work out how many we might expect in the length of reflected ECG we have
-    min_rpeaks = (27*5)
+    min_rpeaks = (27*segment_length_min)
     min_rpeaks_in_reflected = min_rpeaks * (len(ecg_segment) / reflection_order) 
 
     # if there isn't "enough" rpeaks, it may be possible that a certain segmenter 
@@ -345,7 +346,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, timevec=None, segment_idx=0,
         # (note; ectopic beats in ECG show up as spikes in RR intervals, as do missed beats)
         suprathresh_idx = []
         
-        max_traverse = 5
+        MAX_TRAVERSE = 5
         for j in range(0, len(rri)):
 
             previous_idx = j-1
@@ -353,7 +354,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, timevec=None, segment_idx=0,
             while (previous_idx in suprathresh_idx) and (previous_idx > 0):
                 previous_idx -= 1
 
-                if (previous_idx < j-max_traverse):
+                if (previous_idx < j-MAX_TRAVERSE):
                     # stuck in a rut of going back; just use the one previous
                     previous_idx = j-1
                     break
@@ -467,7 +468,7 @@ def hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
     Args:
         ecg:                                (NumPy ndarray)     Long-term ECG recording, that we will break into segments.
         ecg_srate:                          (int)               Sample rate of the ECG recording
-        segment_length_min:                 (int)               The length of each segment, in minutes (e.g 5 for 5 minutes)
+        segment_length_min:                 (float)             The length of each segment, in minutes (e.g 5.0 for 5 minutes, 0.5 for 30 seconds)
         verbose:                            (bool)              Print progress
         (for other parameters, see hrv_per_segment())
 
@@ -496,10 +497,12 @@ def hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
 
         segment = ecg[onsets[i]:onsets[i+1]] # TODO will this overflow
 
-        rpeaks, rri, freq_dom_hrv, time_dom_hrv, modification_report = hrv_per_segment(segment, ecg_srate, timevec=None, segment_idx = i,
+        rpeaks, rri, freq_dom_hrv, time_dom_hrv, modification_report = hrv_per_segment(
+                    segment, ecg_srate, segment_length_min, timevec=None, segment_idx = i,
                     save_plots=save_plots, save_plots_dir=save_plots_dir, save_plot_filename=f"Segment #{i}",
                     use_emd=use_emd, use_segmenter=use_segmenter, remove_noisy_beats=remove_noisy_beats, remove_noisy_RRI=remove_noisy_RRI, rri_in_ms = rri_in_ms,
-                    QRS_MAX_DIST_THRESH = QRS_MAX_DIST_THRESH, RRI_OUTLIER_PERCENTAGE_DIFF_THRESH = RRI_OUTLIER_PERCENTAGE_DIFF_THRESH, MAX_RRI_MS = MAX_RRI_MS)
+                    QRS_MAX_DIST_THRESH = QRS_MAX_DIST_THRESH, RRI_OUTLIER_PERCENTAGE_DIFF_THRESH = RRI_OUTLIER_PERCENTAGE_DIFF_THRESH, MAX_RRI_MS = MAX_RRI_MS
+                    )
 
         time_dom_hrvs.append(time_dom_hrv)
         freq_dom_hrvs.append(freq_dom_hrv)
