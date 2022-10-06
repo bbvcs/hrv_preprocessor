@@ -493,7 +493,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 
 def hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
         save_plots=False, save_plots_dir=None,
-        use_emd=True, use_segmenter="engZee", remove_noisy_beats=True, remove_noisy_RRI=True, rri_in_ms = True,
+        use_emd=True, use_reflection=True, use_segmenter="engZee", remove_noisy_beats=True, remove_noisy_RRI=True, rri_in_ms = True,
         QRS_MAX_DIST_THRESH = 0.30, RRI_OUTLIER_PERCENTAGE_DIFF_THRESH = 0.30, MAX_RRI_MS = 2200 * 2): 
     """
     Break a long-term ECG recording into n-minute segments, calculate HRV metrics, and return results in separate Pandas DataFrames.
@@ -522,7 +522,7 @@ def hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
     freq_dom_hrvs = []
     modification_reports = [] 
 
-    onsets = np.arange(0, len(ecg), (segment_length_min * 60) * ecg_srate)
+    onsets = np.arange(0, len(ecg), (segment_length_min * 60) * ecg_srate, dtype=int)
 
     for i in range(0, len(onsets)-1):
         if verbose:
@@ -533,7 +533,7 @@ def hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
         rpeaks, rri, rri_corrected, freq_dom_hrv, time_dom_hrv, modification_report = hrv_per_segment(
                     segment, ecg_srate, segment_length_min, timevec=None, segment_idx = i,
                     save_plots=save_plots, save_plots_dir=save_plots_dir, save_plot_filename=f"Segment #{i}",
-                    use_emd=use_emd, use_segmenter=use_segmenter, remove_noisy_beats=remove_noisy_beats, remove_noisy_RRI=remove_noisy_RRI, rri_in_ms = rri_in_ms,
+                    use_emd=use_emd, use_reflection=use_reflection, use_segmenter=use_segmenter, remove_noisy_beats=remove_noisy_beats, remove_noisy_RRI=remove_noisy_RRI, rri_in_ms = rri_in_ms,
                     QRS_MAX_DIST_THRESH = QRS_MAX_DIST_THRESH, RRI_OUTLIER_PERCENTAGE_DIFF_THRESH = RRI_OUTLIER_PERCENTAGE_DIFF_THRESH, MAX_RRI_MS = MAX_RRI_MS
                     )
 
