@@ -20,8 +20,8 @@ def find_nearest(array, value):
             return idx
 
 def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, segment_idx=0,
-                    save_plots=False, save_plots_dir=None, save_plot_filename=math.floor(time.time()),
-                    use_emd=True, use_segmenter="engZee", remove_noisy_beats=True, remove_noisy_RRI=True, rri_in_ms = True,
+                    save_plots=False, save_plots_dir='saved_plots', save_plot_filename=math.floor(time.time()),
+                    use_emd=True, use_reflection=True, use_segmenter="engZee", remove_noisy_beats=True, remove_noisy_RRI=True, rri_in_ms = True,
                     QRS_MAX_DIST_THRESH = 0.30, RRI_OUTLIER_PERCENTAGE_DIFF_THRESH = 0.30, MAX_RRI_MS = 2200 * 2): 
     """
     Calculate HRV metrics for a segment of ECG, returning a tuple of ReturnTuples containing HRV Metrics and a Modification Report for this segment.
@@ -36,6 +36,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
         save_plots_dir:                     (string)            A location on disk to save plots to - will be created if doesn't already exist
         save_plot_filename:                 (string)            The filename the plot is saved to, and the title displayed on the plot.
         use_emd:                            (bool)              If True, use Empirical Mode Decomposition to remove LF noise (drift) from ECG.
+        use_reflection:                     (bool)              If True, use reflection to remove edge effects when segmenting rpeaks. 
         use_segmenter:                      (string)            The bioSPPy ECG Segmenter algorithm to use to detect R peak in the ECG. (e.g "engZee", "hamilton")              
         remove_noisy_beats:                 (bool)              Try to remove QRS segments that are too distant from the average QRS beat for this segment.
         remove_noisy_RRI:                   (bool)              Try to remove spikes in the RRI signal, which may be caused by removal of noisy QRS, ectopic beats, or segmenter algorithm errors (false positive R peak)
@@ -45,7 +46,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
         MAX_RRI_MS:                         (float)             A maximum RRI value - to catch some RRI outliers quickly; if any RRI are too large to be natural, remove.
 
     Returns:
-        - rpeaks and rri used for HRV calculation
+        - rpeaks, original rri and rri (corrected unless disabled by param, if so same as original rri) used for HRV calculation
             - if remove_noisy_beats is true, returned rpeaks will have had outliers removed
             - if remove_noisy_RRI is true, returned RRI will have had spikes interpolated
         - a tuple of (freq_dom_hrv, time_dom_hrv, modification_report) where:
@@ -90,7 +91,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
         modification_report["notes"] = "Not enough data recorded in this segment interval"
  
 
-        return None, None, freq_dom_hrv, time_dom_hrv, modification_report
+        return None, None, None, freq_dom_hrv, time_dom_hrv, modification_report
     # </EXIT_CONDITION>
 
 
@@ -111,7 +112,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
             modification_report["excluded"] = True
             modification_report["notes"] = "Less than 3 IMFs were produced by EMD"
 
-            return None, None, freq_dom_hrv, time_dom_hrv, modification_report
+            return None, None, None, freq_dom_hrv, time_dom_hrv, modification_report
         # </EXIT_CONDITION>
 
 
@@ -128,12 +129,6 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 
     """ Get ECG RPeaks """
 
-    # with reflection to remove edge effects
-    reflection_order = math.floor(len(ecg_segment) / 2)
-    ecg_reflected = np.concatenate(
-        (ecg_segment[reflection_order:0:-1], ecg_segment, ecg_segment[-2:len(ecg_segment) - reflection_order - 2:-1]))
-    
-
     segmenters = { # TODO what about extra args (e.g SSF) - include parameter to function "segmenter_args" (*kwargs), pass that and defaults below into segmenter?
         "engZee" : biosppy.signals.ecg.engzee_segmenter,
         "hamilton": biosppy.signals.ecg.hamilton_segmenter,
@@ -142,57 +137,95 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
         "ssf" : biosppy.signals.ecg.ssf_segmenter,
     }
     chosen_segmenter = segmenters[use_segmenter]
-    # get rpeak locations, using a "segmenter algorithm" (algorithm to detect R peaks in ECG)
-    rpeaks = chosen_segmenter(signal=ecg_reflected, sampling_rate=ecg_srate)["rpeaks"]
-    # NOTE: biosppy provides other segmenters. method "biosppy.signals.ecg.ecg()" uses the hamilton segmenter.
-    # christov and hamilton are likely valid alternatives to engzee segmenter, but I haven't thoroughly tested.
-    # others (e.g ssf and gamboa) didn't seem great
-    
+
+
     # how many rpeaks should we expect the alg to detect for a reflected piece of ecg_segment?
         # if lowest bpm ever achieved was 27, expect 27 peaks per min, 27*5 for 5 min
         # then use reflection order to work out how many we might expect in the length of reflected ECG we have
     min_rpeaks = (27*segment_length_min)
-    min_rpeaks_in_reflected = min_rpeaks * (len(ecg_segment) / reflection_order) 
 
-    # if there isn't "enough" rpeaks, it may be possible that a certain segmenter 
-    j = 0
-    while len(rpeaks) < min_rpeaks_in_reflected:
+    if use_reflection:
+        # with reflection to remove edge effects
+        reflection_order = math.floor(len(ecg_segment) / 2)
+        ecg_reflected = np.concatenate(
+            (ecg_segment[reflection_order:0:-1], ecg_segment, ecg_segment[-2:len(ecg_segment) - reflection_order - 2:-1]))
+        
 
-        chosen_segmenter = segmenters[sorted(list(segmenters.keys()))[j]] 
-        if chosen_segmenter != segmenters[use_segmenter]: # if it's not the one we tried in the first place
-            rpeaks = chosen_segmenter(signal=ecg_reflected, sampling_rate=ecg_srate)["rpeaks"]
-        j+=1
+        # get rpeak locations, using a "segmenter algorithm" (algorithm to detect R peaks in ECG)
+        rpeaks = chosen_segmenter(signal=ecg_reflected, sampling_rate=ecg_srate)["rpeaks"]
+        # NOTE: biosppy provides other segmenters. method "biosppy.signals.ecg.ecg()" uses the hamilton segmenter.
+        # christov and hamilton are likely valid alternatives to engzee segmenter, but I haven't thoroughly tested.
+        # others (e.g ssf and gamboa) didn't seem great
+        
+        # how many rpeaks should we expect the alg to detect for a reflected piece of ecg_segment?
+            # if lowest bpm ever achieved was 27, expect 27 peaks per min, 27*5 for 5 min
+            # then use reflection order to work out how many we might expect in the length of reflected ECG we have
+        min_rpeaks = (27*segment_length_min)
+        min_rpeaks_in_reflected = min_rpeaks * (len(ecg_segment) / reflection_order) 
 
-        # <EXIT_CONDITION>
-        # if none helped, then exit
-        if j == len(list(segmenters.keys())):
-     
-            modification_report["excluded"] = True
-            modification_report["notes"] = "Segmenter detected no Rpeaks"
+        # if there isn't "enough" rpeaks, it may be possible that a certain segmenter is the problem
+        j = 0
+        while len(rpeaks) < min_rpeaks_in_reflected:
 
-            return None, None, freq_dom_hrv, time_dom_hrv, modification_report
-        # </EXIT_CONDITION>
+            chosen_segmenter = segmenters[sorted(list(segmenters.keys()))[j]] 
+            if chosen_segmenter != segmenters[use_segmenter]: # if it's not the one we tried in the first place
+                rpeaks = chosen_segmenter(signal=ecg_reflected, sampling_rate=ecg_srate)["rpeaks"]
+            j+=1
 
+            # <EXIT_CONDITION>
+            # if none helped, then exit
+            if len(rpeaks) < min_rpeaks and j == len(list(segmenters.keys())):
+         
+                modification_report["excluded"] = True
+                modification_report["notes"] = "Segmenters detected no Rpeaks"
 
-    # need to chop off the reflected parts before and after original signal
-    original_begins = reflection_order
-    original_ends = original_begins + len(ecg_segment)-1
-
-    rpeaks_begins = find_nearest(rpeaks, original_begins)
-    rpeaks_ends = find_nearest(rpeaks, original_ends)
-    rpeaks = rpeaks[rpeaks_begins:rpeaks_ends]
-
-    # get their position in the original
-    rpeaks = rpeaks - original_begins
-
-    # find_nearest may return the first as an element before original_begins
-    # as we flipped, the last r peak of the flipped data put before original
-    # will be the negative of the first r peak in the original data
-    # as we are using argmin(), this will be returned first
-    # so, remove any negative indices (r peaks before original begins)
-    rpeaks = rpeaks[rpeaks > 0]
+                return None, None, None, freq_dom_hrv, time_dom_hrv, modification_report
+            # </EXIT_CONDITION>
 
 
+        # need to chop off the reflected parts before and after original signal
+        original_begins = reflection_order
+        original_ends = original_begins + len(ecg_segment)-1
+
+        rpeaks_begins = find_nearest(rpeaks, original_begins)
+        rpeaks_ends = find_nearest(rpeaks, original_ends)
+        rpeaks = rpeaks[rpeaks_begins:rpeaks_ends]
+
+        # get their position in the original
+        rpeaks = rpeaks - original_begins
+
+        # find_nearest may return the first as an element before original_begins
+        # as we flipped, the last r peak of the flipped data put before original
+        # will be the negative of the first r peak in the original data
+        # as we are using argmin(), this will be returned first
+        # so, remove any negative indices (r peaks before original begins)
+        rpeaks = rpeaks[rpeaks > 0]
+
+    elif not use_reflection: 
+       
+        rpeaks = chosen_segmenter(signal=ecg_segment, sampling_rate=ecg_srate)["rpeaks"]
+  
+        j = 0
+        while len(rpeaks) < min_rpeaks:
+
+            chosen_segmenter = segmenters[sorted(list(segmenters.keys()))[j]] 
+            if chosen_segmenter != segmenters[use_segmenter]: 
+                rpeaks = chosen_segmenter(signal=ecg_segment, sampling_rate=ecg_srate)["rpeaks"]
+            j+=1
+
+            # <EXIT_CONDITION> (DUPLICATE)
+            # if none helped, then exit
+            if len(rpeaks) < min_rpeaks and j == len(list(segmenters.keys())):
+         
+                modification_report["excluded"] = True
+                modification_report["notes"] = "Segmenters detected no Rpeaks"
+
+                return None, None, None, freq_dom_hrv, time_dom_hrv, modification_report
+            # </EXIT_CONDITION>
+
+
+
+        
     # correct candidate rpeaks to the maximum ECG value within a time tolerance (0.05s by default)
     rpeaks = biosppy.signals.ecg.correct_rpeaks(ecg_segment, rpeaks, sampling_rate = ecg_srate, tol = 0.05)["rpeaks"]
 
@@ -250,7 +283,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
             modification_report["n_rpeaks_noisy"] = len(noisy_beats_idx)
             modification_report["notes"] = f"No runs detected - so likely signal was all noise."
 
-            return rpeaks, None, freq_dom_hrv, time_dom_hrv, modification_report
+            return rpeaks, None, None, freq_dom_hrv, time_dom_hrv, modification_report
         # </EXIT_CONDITION>
 
 
@@ -272,7 +305,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
             modification_report["n_rpeaks_noisy"] = len(noisy_beats_idx)
             modification_report["notes"] = f"Noisy beats {snr}"
 
-            return rpeaks, None, freq_dom_hrv, time_dom_hrv, modification_report
+            return rpeaks, None, None, freq_dom_hrv, time_dom_hrv, modification_report
         # </EXIT_CONDITION>
 
        
@@ -284,27 +317,25 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
             modification_report["n_rpeaks_noisy"] = len(noisy_beats_idx)
             modification_report["notes"] = "No rpeaks left after noisy rpeaks removed"
 
-            return rpeaks, None, freq_dom_hrv, time_dom_hrv, modification_report
+            return rpeaks, None, None, freq_dom_hrv, time_dom_hrv, modification_report
         # </EXIT_CONDITION>
 
 
     """ Calculate and correct R-R Intervals """
     
-    rri = (np.diff(rpeaks) / ecg_srate) * rri_time_multiplier # ms
+    rri = (np.diff(rpeaks) / ecg_srate) * rri_time_multiplier 
 
     
-    # <EXIT_CONDITION> # TODO not sure if this situation is possible
-    #print("REMOVE TESTING #2")
-    #TESTING_MEAN.append(np.mean(beats_distance))
-    #TESTING_STD.append(np.std(beats_distance))
-    if sum(rri) < (rri_time_multiplier * 60) * 2:
+    # <EXIT_CONDITION>
+    # if there is less than 2m of RRI
+    if sum(rri) < (110 * rri_time_multiplier): # 110s == 1m50s
 
         modification_report["excluded"] = True
         modification_report["n_rpeaks_noisy"] = len(noisy_beats_idx)
         modification_report["n_RRI_detected"] = len(rri)
-        modification_report["notes"] = "Sum of RRI was less than 2Mins"
+        modification_report["notes"] = f"Sum of RRI ({sum(rri)}) was less than 2Mins (lowest accepted is 1m50s)"
 
-        return rpeaks, rri, freq_dom_hrv, time_dom_hrv, modification_report
+        return rpeaks, rri, None, freq_dom_hrv, time_dom_hrv, modification_report
     # </EXIT_CONDITION>
     
     
@@ -323,7 +354,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
             modification_report["n_RRI_detected"] = len(rri)
             modification_report["notes"] = "Sum of RRI in LONGEST CONSECUTIVE was less than 2Mins"
 
-            return rpeaks, rri, freq_dom_hrv, time_dom_hrv, modification_report
+            return rpeaks, rri, None, freq_dom_hrv, time_dom_hrv, modification_report
     # </EXIT_CONDITION>
 
 
@@ -381,7 +412,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
             while (previous_idx in suprathresh_idx) and (previous_idx < len(rri)-1):
                 previous_idx += 1
 
-                if (previous_idx > j+max_traverse):
+                if (previous_idx > j+MAX_TRAVERSE):
                     previous_idx = j+1
                     break
             
@@ -454,7 +485,9 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
         modification_report["notes"] = "Zero Division Error (probably bug in sdnn_index()), so time domain excluded."
         time_dom_hrv = np.NaN
 
-    return rpeaks, rri_corrected, freq_dom_hrv, time_dom_hrv, modification_report
+    plt.close()
+
+    return rpeaks, rri, rri_corrected, freq_dom_hrv, time_dom_hrv, modification_report
 
 
 
@@ -497,7 +530,7 @@ def hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
 
         segment = ecg[onsets[i]:onsets[i+1]] # TODO will this overflow
 
-        rpeaks, rri, freq_dom_hrv, time_dom_hrv, modification_report = hrv_per_segment(
+        rpeaks, rri, rri_corrected, freq_dom_hrv, time_dom_hrv, modification_report = hrv_per_segment(
                     segment, ecg_srate, segment_length_min, timevec=None, segment_idx = i,
                     save_plots=save_plots, save_plots_dir=save_plots_dir, save_plot_filename=f"Segment #{i}",
                     use_emd=use_emd, use_segmenter=use_segmenter, remove_noisy_beats=remove_noisy_beats, remove_noisy_RRI=remove_noisy_RRI, rri_in_ms = rri_in_ms,
