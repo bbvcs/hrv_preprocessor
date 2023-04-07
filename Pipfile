@@ -12,6 +12,8 @@ pandas = "*"
 biosppy = "*"
 emd = "*"
 dtw-python = "*"
+scikit-learn = "*"
+seaborn = "*"
 
 [dev-packages]
 

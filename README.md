@@ -34,14 +34,9 @@ I would recommend running on an Ubuntu/Debian based OS (should work with any Lin
         - Use Dynamic Time Warping (DTW) to get a distance value for each beat from this average - the noisy beats should correlate poorly, and can be removed using a threshold (currently, any that have a distance value above 0.30 are removed.)
     - Use the R peak locations to calculate the R-R interval (RRI) series for this segment.
     - Noise/Misidentified R peaks/Ectopic beats etc all cause spikes in the RRI series, which are detrimental to HRV calculation - so we must try to correct these.
-        - Iterate forwards over the RRI series, for each point:
-            - Calculate the mean of the RRI either side of it.
-                - if the point behind was determined to be an outlier/spikes, take the point before that instead.
-                - Only try this 5 times - If all 5 behind the point are outliers, just use the point immediately behind it.
-            - Calculate the difference between this RRI and the surrounding mean.
-            - If this difference is greater than a percentage (30%) of the surrounding mean, then this RRI is an outlier.
-        - Do the same, iterating backwards over the series - so now if the point in front of an RRI was previously determined as an outlier, we can take the next point instead, but again only try for 5 points.
-        - Remove duplicates from the list of outlier points built up over both runs
+        - Produce a Poincare representation (each RRI paired with the next RRI) of the RRI segment. Valid RRIs will form a cluster on a scatterplot of this, whereas outliers/spikes will be distant from this cluster.
+        - Use DBSCAN to find any outliers not belonging to the main cluster.
+        - As all RRI (except the first and last) will appear twice in the Poincare representation, class any RRI that are an outlier in both instances as outliers/spikes.
         - Interpolate points we have determined as outliers.  
 
 3. NaN Exit Conditions
@@ -54,6 +49,7 @@ I would recommend running on an Ubuntu/Debian based OS (should work with any Lin
         - If more than 40% of all R Peaks were determined to be associated with noise.
         - If the number of R Peaks did not meet the *minimum* after removal of those associated with noise.
         - The sum of the RRI is less than 2 minutes, the minimum for calculation of LF HRV Frequency Domain Metrics.
+            - This is checked 3 times; first when RRI is first calculated, third when outliers are removed from RRI before correction. second check is if original RRI has an uninterrupted run of 2 mins, ECG noise-free. 
         - If more than 20% of all R Peaks were determined to be associated with noise, check that the sum of the RRI related to the longest consecutive run of Valid R Peaks (not associated with noise) is greater than 2 minutes - if not, remove.
             - I did this to try to remove segments where the noise is spread evenly/frequently throughout a segment, meaning interpolation occurs too often, so won't resemble real data.
             - If the noise is only contained to a small part of the segment, and most of the data is valid, it may still be OK for HRV.
@@ -94,6 +90,6 @@ These methods have many parameters; see docstrings in the code, as well as `exam
 Billy C. Smith  
 bcsm@posteo.net  
 MSc Student @ Newcastle University  
-27/09/2022
+07/04/2023
 
 

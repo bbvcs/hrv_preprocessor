@@ -1,7 +1,12 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import seaborn as sns
 from scipy import stats, interpolate, signal
+
+from sklearn.cluster import DBSCAN, OPTICS
+from sklearn.preprocessing import StandardScaler
+from sklearn.neighbors import NearestNeighbors
 
 import biosppy
 import pyhrv
@@ -22,7 +27,7 @@ def find_nearest(array, value):
 def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, segment_idx=0,
                     save_plots=False, save_plots_dir='saved_plots', save_plot_filename=math.floor(time.time()),
                     use_emd=True, use_reflection=True, use_segmenter="engZee", remove_noisy_beats=True, remove_noisy_RRI=True, rri_in_ms = True,
-                    QRS_MAX_DIST_THRESH = 0.30, RRI_OUTLIER_PERCENTAGE_DIFF_THRESH = 0.30, MAX_RRI_MS = 2200 * 2): 
+                    QRS_MAX_DIST_THRESH = 0.30, DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER = 0.25, DBSCAN_MIN_SAMPLES = 100): 
     """
     Calculate HRV metrics for a segment of ECG, returning a tuple of ReturnTuples containing HRV Metrics and a Modification Report for this segment.
 
@@ -42,8 +47,8 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
         remove_noisy_RRI:                   (bool)              Try to remove spikes in the RRI signal, which may be caused by removal of noisy QRS, ectopic beats, or segmenter algorithm errors (false positive R peak)
         rri_in_ms:                          (bool)              If True, return RRI in milliseconds, otherwise in seconds.
         QRS_MAX_DIST_THRESH:                (float)             Maximum normalised distance (0-1) for a beat from the average to be considered valid (see remove_noisy_beats)
-        RRI_OUTLIER_PERCENTAGE_DIFF_THRESH: (float)             If distance value of an RRI from the mean of its neighbours exceeds this, declare as outlier/spike (see remove_noisy_RRI)
-        MAX_RRI_MS:                         (float)             A maximum RRI value - to catch some RRI outliers quickly; if any RRI are too large to be natural, remove.
+        DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER  (float)             Episilon of DBSCAN algorithm for finding RRI outliers (see remove_noisy_RRI) uses the mean of RRI in that segment multiplied by this value.
+        DBSCAN_MIN_SAMPLES                  (int)               Min samples/min points parameter for DBSCAN when finding RRI outliers (see remove_noisy_RRI).
 
     Returns:
         - rpeaks, original rri and rri (corrected unless disabled by param, if so same as original rri) used for HRV calculation
@@ -82,7 +87,6 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
     modification_report["notes"] = ""
 
    
-
     # <EXIT_CONDITION>
     # if there isn't enough data in the segment to calculate LF/HF
     if len(ecg_segment) < ecg_srate * (60 * 2):
@@ -328,12 +332,12 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
     
     # <EXIT_CONDITION>
     # if there is less than 2m of RRI
-    if sum(rri) < (110 * rri_time_multiplier): # 110s == 1m50s
+    if sum(rri) < (rri_time_multiplier * 120): 
 
         modification_report["excluded"] = True
         modification_report["n_rpeaks_noisy"] = len(noisy_beats_idx)
         modification_report["n_RRI_detected"] = len(rri)
-        modification_report["notes"] = f"Sum of RRI ({sum(rri)}) was less than 2Mins (lowest accepted is 1m50s)"
+        modification_report["notes"] = f"Sum of RRI ({sum(rri)}) was less than 2Mins"
 
         return rpeaks, rri, None, freq_dom_hrv, time_dom_hrv, modification_report
     # </EXIT_CONDITION>
@@ -347,7 +351,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
     if snr > 0.20:
         k = np.sum(rri[longest_consecutive[0]:longest_consecutive[1]])
 
-        if k < (rri_time_multiplier * 60) * 2:
+        if k < (rri_time_multiplier * 120):
 
             modification_report["excluded"] = True
             modification_report["n_rpeaks_noisy"] = len(noisy_beats_idx)
@@ -359,92 +363,69 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 
 
     if not remove_noisy_RRI:
-        rri_corrected = rri # for compatibility
+        rri_corrected = rri # for compatibility with plots
 
     elif remove_noisy_RRI:
         # Often RRI contain spikes, when algorithm error has resulted in a beat being missed/noise has mean extra beat detected
         # These spikes must be removed as they will affect HRV metrics
         rri_corrected = np.copy(rri)
 
-        # instead of TKEO to remove spikes, use approach inspired by:
-        # https://www.hrv4training.com/blog/issues-in-heart-rate-variability-hrv-analysis-motion-artifacts-ectopic-beats
-        #   - which said any RR intervals that differ 20-25% more than the previous
-        # and Karlsson et. al "Automatic filtering of outliers in RR intervals before analysis of HRV in Holter recordings"
-        #   - which said "RR intervals that differ to mean of *surrounding* intervals", testing from 30-50%.
-        # to remove spikes & ectopic beats by:
-        #       - checking how each RR interval compares to mean of the previous/next interval
-        #       - if difference between RR interval and surrounding mean exceeds 30% of surrounding mean, exclude as spike.
-        # (note; ectopic beats in ECG show up as spikes in RR intervals, as do missed beats)
-        suprathresh_idx = []
-        
-        MAX_TRAVERSE = 5
-        for j in range(0, len(rri)):
+	# produce a poincare reccurence represntation of the segment, where each RRI is paired with the next
+        poincare = np.array([rri[:-1],rri[1:]], dtype=np.float32)
 
-            previous_idx = j-1
+	# in poincare plot, outliers should be far from a main cluster of valid RRIs. So use DBSCAN to detect outliers
+        db = DBSCAN(eps = (np.mean(rri_corrected) * DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER), min_samples=DBSCAN_MIN_SAMPLES).fit(poincare.T)
+        labels = db.labels_ # -1 is outliers, >= 0 is a valid cluster
 
-            while (previous_idx in suprathresh_idx) and (previous_idx > 0):
-                previous_idx -= 1
-
-                if (previous_idx < j-MAX_TRAVERSE):
-                    # stuck in a rut of going back; just use the one previous
-                    previous_idx = j-1
-                    break
-
+        # every RRI except first & last will appear twice in poincare representation
+        # if both appearances are an outlier, then it is probably a spike, so we say this RRI is an outlier
+        poincare_outliers = np.zeros(len(rri_corrected))
+        for j in range(0, len(poincare_outliers)):
             if j == 0:
-                surrounding_mean = rri[j+1]
-            elif j == len(rri)-1:
-                surrounding_mean = rri[previous_idx]
+                if labels[j] == -1:
+                    poincare_outliers[j] = 1                         
+
+            if j == len(poincare_outliers)-1:
+               if labels[-1] == -1:
+                    poincare_outliers[j] = 1  
+
             else:
-                surrounding_mean = np.mean([rri[previous_idx], rri[j+1]])            
+                if (labels[j-1] == -1) and (labels[j] == -1):
+                    poincare_outliers[j] = 1
 
-            diff = abs(rri[j] - surrounding_mean)
-            #diff = max(abs(rri[j] - rri[j-1]), abs(rri[j] - rri[j+1]))
-            
-            if rri[j] > MAX_RRI_MS or (diff > surrounding_mean * RRI_OUTLIER_PERCENTAGE_DIFF_THRESH):
-                suprathresh_idx.append(j)
+        # plot poincare representation w/ outliers
+        fig, ax = plt.subplots() 
+        labels_text = ["Valid" if label >= 0 else "Outlier" for label in labels]
+        sns.scatterplot(x=rri[:-1], y=rri[1:], hue=labels_text, palette={"Valid": "#000000", "Outlier": "#FF0000"}, ax=ax)
+        fig.savefig(f"{save_plots_dir}/{save_plot_filename}_POINCARE", dpi=100)
 
+        # get idx of outliers in rri
+        outlier_idx = np.where(poincare_outliers == 1)[0]
 
-        # do in reverse
-        for j in np.flip(range(0, len(rri))):
-
-            previous_idx = j+1
-
-            while (previous_idx in suprathresh_idx) and (previous_idx < len(rri)-1):
-                previous_idx += 1
-
-                if (previous_idx > j+MAX_TRAVERSE):
-                    previous_idx = j+1
-                    break
-            
-
-            if j == 0:
-                surrounding_mean = rri[previous_idx]
-            elif j == len(rri)-1:
-                surrounding_mean = rri[j-1]
-            else:
-                surrounding_mean = np.mean([rri[previous_idx], rri[j-1]])            
-
-            diff = abs(rri[j] - surrounding_mean)
-            
-            if rri[j] > MAX_RRI_MS or (diff > surrounding_mean * RRI_OUTLIER_PERCENTAGE_DIFF_THRESH):
-                suprathresh_idx.append(j)
-
-        # remove duplicates and sort
-        suprathresh_idx = sorted(set(suprathresh_idx))
-
-        
         # produce a copy without the RRIs exceeding the threshold, for use in interpolation
-        rri_corrected_supra_removed = np.delete(rri_corrected, suprathresh_idx)
-        rri_corrected_supra_idx_removed = np.delete(np.array(range(0, len(rri_corrected))), suprathresh_idx)
+        rri_corrected_supra_removed = np.delete(rri_corrected, outlier_idx)
+        rri_corrected_supra_idx_removed = np.delete(np.array(range(0, len(rri_corrected))), outlier_idx)
         
+        # <EXIT_CONDITION>
+        # if too many have been detected as outliers
+        if sum(rri_corrected_supra_removed) < (rri_time_multiplier * 120):
+
+            modification_report["excluded"] = True
+            modification_report["n_rpeaks_noisy"] = len(noisy_beats_idx)
+            modification_report["n_RRI_detected"] = len(rri)
+            modification_report["notes"] = f"Sum of corrected RRI (outliers removed) ({sum(rri_corrected)}) was less than 2Mins"
+
+            return rpeaks, rri, rri_corrected, freq_dom_hrv, time_dom_hrv, modification_report
+        # </EXIT_CONDITION>
+            
         # interpolate points above threshold
-        rri_corrected[suprathresh_idx] = np.interp(suprathresh_idx, rri_corrected_supra_idx_removed, rri_corrected_supra_removed)
+        rri_corrected[outlier_idx] = np.interp(outlier_idx, rri_corrected_supra_idx_removed, rri_corrected_supra_removed)
 
     modification_report["excluded"] = False
     modification_report["n_rpeaks_noisy"] = len(noisy_beats_idx)
     modification_report["n_RRI_detected"] = len(rri) # how many RRI were detected for the segment originally
-    modification_report["n_RRI_suprathresh"] = len(suprathresh_idx)
-    modification_report["suprathresh_values"] = rri[suprathresh_idx]
+    modification_report["n_RRI_suprathresh"] = len(outlier_idx)
+    modification_report["suprathresh_values"] = rri[outlier_idx]
     modification_report["notes"] = ""
 
     if save_plots:
@@ -452,7 +433,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
         axs[0].scatter(timevec[noisy_rpeaks], ecg_segment[noisy_rpeaks], c="r", label="Noisy R Peaks (Removed)")
         axs[0].set_title(f"ECG Data with Detected R Peaks")
 
-        if len(suprathresh_idx) > 0:
+        if len(outlier_idx) > 0:
             axs[1].plot(timevec[rpeaks][:-1], rri, c="dimgray", label="Pre-processed HRV")
             axs[1].plot(timevec[rpeaks][:-1], rri_corrected, c="crimson", label="Processed HRV")
         else:
@@ -494,7 +475,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 def hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
         save_plots=False, save_plots_dir=None,
         use_emd=True, use_reflection=True, use_segmenter="engZee", remove_noisy_beats=True, remove_noisy_RRI=True, rri_in_ms = True,
-        QRS_MAX_DIST_THRESH = 0.30, RRI_OUTLIER_PERCENTAGE_DIFF_THRESH = 0.30, MAX_RRI_MS = 2200 * 2): 
+        QRS_MAX_DIST_THRESH = 0.30, DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER = 0.25, DBSCAN_MIN_SAMPLES=100): 
     """
     Break a long-term ECG recording into n-minute segments, calculate HRV metrics, and return results in separate Pandas DataFrames.
 
@@ -534,7 +515,7 @@ def hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
                     segment, ecg_srate, segment_length_min, timevec=None, segment_idx = i,
                     save_plots=save_plots, save_plots_dir=save_plots_dir, save_plot_filename=f"Segment #{i}",
                     use_emd=use_emd, use_reflection=use_reflection, use_segmenter=use_segmenter, remove_noisy_beats=remove_noisy_beats, remove_noisy_RRI=remove_noisy_RRI, rri_in_ms = rri_in_ms,
-                    QRS_MAX_DIST_THRESH = QRS_MAX_DIST_THRESH, RRI_OUTLIER_PERCENTAGE_DIFF_THRESH = RRI_OUTLIER_PERCENTAGE_DIFF_THRESH, MAX_RRI_MS = MAX_RRI_MS
+                    QRS_MAX_DIST_THRESH = QRS_MAX_DIST_THRESH, DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER = DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER, DBSCAN_MIN_SAMPLES=DBSCAN_MIN_SAMPLES
                     )
 
         time_dom_hrvs.append(time_dom_hrv)

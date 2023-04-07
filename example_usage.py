@@ -26,7 +26,7 @@ if __name__ == "__main__":
    time_dom_df, freq_dom_df, modification_report_df = hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
             save_plots=False, save_plots_dir="saved_plots",
             use_emd=True, use_reflection=True, use_segmenter="engZee", remove_noisy_beats=True, remove_noisy_RRI=True, rri_in_ms = True,
-            QRS_MAX_DIST_THRESH = 0.30, RRI_OUTLIER_PERCENTAGE_DIFF_THRESH = 0.30, MAX_RRI_MS = 2200 * 2) 
+            QRS_MAX_DIST_THRESH = 0.30, DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER = 0.04, DBSCAN_MIN_SAMPLES = 100) 
 
    # save the dataframes as .csv files; can load in later (pd.read_csv) and process
    save_hrv_dataframes(time_dom_df, freq_dom_df, modification_report_df, save_dfs_dir="out")
