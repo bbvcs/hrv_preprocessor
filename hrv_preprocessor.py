@@ -10,7 +10,7 @@ from sklearn.neighbors import NearestNeighbors
 
 import biosppy
 import pyhrv
-from dtw import *
+from dtw import * # NOTE; this is the library "python-dtw", NOT "dtw"!
 import emd
 
 import os
@@ -393,11 +393,12 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
                 if (labels[j-1] == -1) and (labels[j] == -1):
                     poincare_outliers[j] = 1
 
-        # plot poincare representation w/ outliers
-        fig, ax = plt.subplots() 
-        labels_text = ["Valid" if label >= 0 else "Outlier" for label in labels]
-        sns.scatterplot(x=rri[:-1], y=rri[1:], hue=labels_text, palette={"Valid": "#000000", "Outlier": "#FF0000"}, ax=ax)
-        fig.savefig(f"{save_plots_dir}/{save_plot_filename}_POINCARE", dpi=100)
+        if save_plots:
+            # plot poincare representation w/ outliers
+            fig2, ax2 = plt.subplots()
+            labels_text = ["Valid" if label >= 0 else "Outlier" for label in labels]
+            sns.scatterplot(x=rri[:-1], y=rri[1:], hue=labels_text, palette={"Valid": "#000000", "Outlier": "#FF0000"}, ax=ax2)
+            fig2.savefig(f"{save_plots_dir}/{save_plot_filename}_POINCARE", dpi=100)
 
         # get idx of outliers in rri
         outlier_idx = np.where(poincare_outliers == 1)[0]
@@ -453,8 +454,8 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
         
         # save to image for inspection
         # should be 1280x720 (720p)
-        plt.gcf().set_size_inches(12.80, 7.2)
-        plt.savefig(f"{save_plots_dir}/{save_plot_filename}", dpi=100)
+        fig.set_size_inches(12.80, 7.2)
+        fig.savefig(f"{save_plots_dir}/{save_plot_filename}", dpi=100)
 
 
     """ Calculate HRV Metrics """
