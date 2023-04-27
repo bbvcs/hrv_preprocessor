@@ -10,7 +10,7 @@ from sklearn.neighbors import NearestNeighbors
 
 import biosppy
 import pyhrv
-from dtw import * # NOTE; this is the library "python-dtw", NOT "dtw"!
+from dtw import * # NOTE; this is the library "dtw-python", NOT "dtw"!
 import emd
 
 import os
