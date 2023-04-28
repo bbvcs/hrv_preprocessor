@@ -43,8 +43,8 @@ I would recommend running on an Ubuntu/Debian based OS (should work with any Lin
     - There are some cases where we would want to discard a segment from HRV calculation.
     - The following are the current conditions for this, and are fairly arbitrary:
         - If, for whatever reason, not enough ECG readings occurred in the segment interval (lost data due to recording issues)
-        - If EMD produced less than 3 IMFs.
-        - The segmenter algorithms (multiple are tried in case of a fault in any particular one) didn't give an R Peak count above the *minimum*.
+        - If EMD failed, or produced less than 3 IMFs.
+        - The segmenter algorithm~~s (multiple are tried in case of a fault in any particular one)~~ didn't give an R Peak count above the *minimum*.
         - All R Peaks were determined to be associated with noise.
         - If more than 40% of all R Peaks were determined to be associated with noise.
         - If the number of R Peaks did not meet the *minimum* after removal of those associated with noise.
