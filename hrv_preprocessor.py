@@ -496,7 +496,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 		modification_report["notes"] = "Zero Division Error (probably bug in sdnn_index()), so time domain excluded."
 		time_dom_hrv = np.NaN
 
-	plt.close()
+	plt.close("all")
 
 	return rpeaks, rri, rri_corrected, freq_dom_hrv, time_dom_hrv, modification_report
 
