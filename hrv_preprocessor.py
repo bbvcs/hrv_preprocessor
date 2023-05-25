@@ -970,11 +970,21 @@ def hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
 
 	segment_labels = np.array(range(0, len(onsets)-1))
 
-	time_dom_df = pd.DataFrame(time_dom_hrvs, index=segment_labels, columns=list(time_dom_hrvs[0].keys()))
-	freq_dom_df = pd.DataFrame(freq_dom_hrvs, index=segment_labels, columns=list(freq_dom_hrvs[0].keys()))
-	
+	time_dom_df, freq_dom_df, modification_report_df = produce_hrv_dataframes(time_dom_hrvs, freq_dom_hrvs, modification_reports, segment_labels)
 
-   
+
+	return time_dom_df, freq_dom_df, modification_report_df
+
+
+def produce_hrv_dataframes(time_dom_hrvs, freq_dom_hrvs, modification_reports, segment_labels):
+	time_dom_keys = np.array(['nni_counter', 'nni_mean', 'nni_min', 'nni_max', 'hr_mean', 'hr_min', 'hr_max', 'hr_std', 'nni_diff_mean', 'nni_diff_min', 'nni_diff_max', 'sdnn', 'sdnn_index', 'sdann', 'rmssd', 'sdsd', 'nn50', 'pnn50', 'nn20', 'pnn20', 'nni_histogram',     'tinn_n', 'tinn_m', 'tinn', 'tri_index'])
+	freq_dom_keys = np.array(['fft_bands', 'fft_peak', 'fft_abs', 'fft_rel', 'fft_log', 'fft_norm', 'fft_ratio', 'fft_total', 'fft_plot', 'fft_nfft', 'fft_window', 'fft_resampling_frequency', 'fft_interpolation'])
+	 
+	time_dom_df = pd.DataFrame(time_dom_hrvs, index=segment_labels, columns=time_dom_keys)
+	freq_dom_df = pd.DataFrame(freq_dom_hrvs, index=segment_labels, columns=freq_dom_keys)
+
+
+
 	modification_report_df = pd.DataFrame({"segment_idx":   [i["seg_idx"] for i in modification_reports], 
 							"excluded":                 [i["excluded"] for i in modification_reports],
 							"n_rpeaks_noisy":           [i["n_rpeaks_noisy"] for i in modification_reports],
@@ -982,22 +992,25 @@ def hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
 							"n_RRI_suprathresh":        [i["n_RRI_suprathresh"] for i in modification_reports], 
 							"suprathresh_RRI_values":   [i["suprathresh_values"] for i in modification_reports],
 							"notes":                    [i["notes"] for i in modification_reports]})
-	
-
-
 	return time_dom_df, freq_dom_df, modification_report_df
-
-
 
 
 def save_hrv_dataframes(time_dom_df, freq_dom_df, modification_report_df, save_dfs_dir="out"):
 
-   if not os.path.exists(save_dfs_dir):
+	if not os.path.exists(save_dfs_dir):
 	   print("Setting up directory for HRV Output: at '{}'".format(save_dfs_dir))
 	   os.makedirs(save_dfs_dir, exist_ok=True)
-   
-   time_dom_df.to_csv(f"{save_dfs_dir}/TIMEDOM.csv")
-   freq_dom_df.to_csv(f"{save_dfs_dir}/FREQDOM.csv")
-   modification_report_df.to_csv(f"{save_dfs_dir}/MODIFICATION_REPORT.csv")
 
+	time_dom_df.to_csv(f"{save_dfs_dir}/TIMEDOM.csv")
+	freq_dom_df.to_csv(f"{save_dfs_dir}/FREQDOM.csv")
+	modification_report_df.to_csv(f"{save_dfs_dir}/MODIFICATION_REPORT.csv")
+
+
+def load_hrv_dataframes(save_dfs_dir="out"):
+   
+	time_dom_df = pd.read_csv(f"{save_dfs_dir}/TIMEDOM.csv")
+	freq_dom_df = pd.read_csv(f"{save_dfs_dir}/FREQDOM.csv")
+	modification_report_df = pd.read_csv(f"{save_dfs_dir}/MODIFICATION_REPORT.csv")
+
+	return time_dom_df, freq_dom_df, modification_report_df
 
