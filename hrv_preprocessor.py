@@ -20,6 +20,7 @@ import time
 import warnings
 
 
+
 def find_nearest(array, value):
 	# https://stackoverflow.com/questions/2566412/find-nearest-value-in-numpy-array (modified)
 	idx = np.nanargmin((np.abs(array - value)))
@@ -29,7 +30,7 @@ def find_nearest(array, value):
 def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, segment_idx=0,
 					save_plots=False, save_plots_dir='saved_plots', save_plot_filename=math.floor(time.time()),
 					use_emd=True, use_reflection=True, use_segmenter="engzee", remove_noisy_beats=True, remove_noisy_RRI=True, rri_in_ms = True,
-					QRS_MAX_DIST_THRESH = 0.30, DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER = 0.25, DBSCAN_MIN_SAMPLES = 100): 
+					QRS_MAX_DIST_THRESH = 0.30, DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER = 0.25, DBSCAN_MIN_SAMPLES = 100, rng=np.random.default_rng()): 
 	"""
 	Calculate HRV metrics for a segment of ECG, returning a tuple of ReturnTuples containing HRV Metrics and a Modification Report for this segment.
 
@@ -51,6 +52,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 		QRS_MAX_DIST_THRESH:                (float)             Maximum normalised distance (0-1) for a beat from the average to be considered valid (see remove_noisy_beats)
 		DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER  (float)             Episilon of DBSCAN algorithm for finding RRI outliers (see remove_noisy_RRI) uses the mean of RRI in that segment multiplied by this value.
 		DBSCAN_MIN_SAMPLES                  (int)               Min samples/min points parameter for DBSCAN when finding RRI outliers (see remove_noisy_RRI).
+		rng				    (numpy.random._generator.Generator) Provided as param so the same RNG can be used for all calls to hrv_per_segment(), if reproducability is important.
 
 	Returns:
 		- rpeaks, original rri and rri (corrected unless disabled by param, if so same as original rri) used for HRV calculation
@@ -702,8 +704,8 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 				if gap_end == len(rri_corrected)-1:
 					# if final rri is erroneous, re_generate an RR for the original time point, and bring gap in 
 					#Ts[1:][gap_end] = Ts_original[1:][len(Ts_original) - (len(Ts) - gap_end)] # undo NaN (have to account for changing gap positions as we fix successive gaps, and that original Ts doesn't change)
-					Ts[1:][gap_end] = Ts[1:][gap_start-1] + np.sum(np.random.default_rng().normal(mu, sigma, gap_length)) # using the approximate number of RRIs we need to replace (gap_length), create a plausible timestamp for the end
-					rri_corrected[gap_end] = np.random.default_rng().normal(mu, sigma, 1)[0]
+					Ts[1:][gap_end] = Ts[1:][gap_start-1] + np.sum(rng.normal(mu, sigma, gap_length)) # using the approximate number of RRIs we need to replace (gap_length), create a plausible timestamp for the end
+					rri_corrected[gap_end] = rng.normal(mu, sigma, 1)[0]
 					gap_end -=1
 					# TODO if gap is last point only?
 
@@ -732,11 +734,11 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 					#while (T - T_start)-mu >= sigma*3:
 					while (T - T_start) >= (mu + (sigma*3)):	
 						
-						RR = np.random.default_rng().normal(mu, sigma, 1)[0]
+						RR = rng.normal(mu, sigma, 1)[0]
 						tries = 0
 						while not dvc_conditions_rightonly(RR, new_RRs[0] if len(new_RRs) > 1 else RR_end, e_10):
 							tries += 1
-							RR = np.random.default_rng().normal(mu, sigma, 1)[0] # generate until meets condition TODO potential for infinite loop, apply same increase to variance?
+							RR = rng.normal(mu, sigma, 1)[0] # generate until meets condition TODO potential for infinite loop, apply same increase to variance?
 							if tries % 4 == 0:
 								if e_10 < MAX_E10:
 									e_10 = e_10 + 0.05
@@ -781,11 +783,11 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 						while (T - T_start) >= (mu + (sigma* 3)): # TODO copied code from above
 							
 							e_10_rr = e_10
-							RR = np.random.default_rng().normal(mu, sigma, 1)[0]
+							RR = rng.normal(mu, sigma, 1)[0]
 							tries_rr = 0
 							while not dvc_conditions_rightonly(RR, new_RRs[0] if len(new_RRs) > 1 else RR_end, e_10_rr):
 								tries_rr += 1
-								RR = np.random.default_rng().normal(mu, sigma, 1)[0] 
+								RR = rng.normal(mu, sigma, 1)[0] 
 								if tries_rr % 4 == 0:
 									if e_10_rr < MAX_E10:
 										e_10_rr = e_10_rr + 0.05
@@ -919,7 +921,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 def hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
 		save_plots=False, save_plots_dir=None,
 		use_emd=True, use_reflection=True, use_segmenter="engZee", remove_noisy_beats=True, remove_noisy_RRI=True, rri_in_ms = True,
-		QRS_MAX_DIST_THRESH = 0.30, DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER = 0.25, DBSCAN_MIN_SAMPLES=100): 
+		QRS_MAX_DIST_THRESH = 0.30, DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER = 0.25, DBSCAN_MIN_SAMPLES=100, rng=np.random.default_rng()): 
 	"""
 	Break a long-term ECG recording into n-minute segments, calculate HRV metrics, and return results in separate Pandas DataFrames.
 
@@ -959,7 +961,7 @@ def hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
 					segment, ecg_srate, segment_length_min, timevec=None, segment_idx = i,
 					save_plots=save_plots, save_plots_dir=save_plots_dir, save_plot_filename=f"Segment #{i}",
 					use_emd=use_emd, use_reflection=use_reflection, use_segmenter=use_segmenter, remove_noisy_beats=remove_noisy_beats, remove_noisy_RRI=remove_noisy_RRI, rri_in_ms = rri_in_ms,
-					QRS_MAX_DIST_THRESH = QRS_MAX_DIST_THRESH, DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER = DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER, DBSCAN_MIN_SAMPLES=DBSCAN_MIN_SAMPLES
+					QRS_MAX_DIST_THRESH = QRS_MAX_DIST_THRESH, DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER = DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER, DBSCAN_MIN_SAMPLES=DBSCAN_MIN_SAMPLES, rng=rng
 					)
 
 		time_dom_hrvs.append(time_dom_hrv)

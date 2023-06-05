@@ -22,11 +22,14 @@ if __name__ == "__main__":
 
    segment_length_min = 5.0
 
+   # instatiate rng with a seed to ensure reproducability (DVC method has some randomness)
+   rng = np.random.default_rng(seed=1905)
+
    # produce dataframes with hrv metrics per segment
    time_dom_df, freq_dom_df, modification_report_df = hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
             save_plots=False, save_plots_dir="saved_plots",
             use_emd=True, use_reflection=True, use_segmenter="engZee", remove_noisy_beats=True, remove_noisy_RRI=True, rri_in_ms = True,
-            QRS_MAX_DIST_THRESH = 0.30, DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER = 0.04, DBSCAN_MIN_SAMPLES = 100) 
+            QRS_MAX_DIST_THRESH = 0.30, DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER = 0.04, DBSCAN_MIN_SAMPLES = 100, rng=rng) 
 
    # save the dataframes as .csv files; can load in later (pd.read_csv) and process
    save_hrv_dataframes(time_dom_df, freq_dom_df, modification_report_df, save_dfs_dir="out")
