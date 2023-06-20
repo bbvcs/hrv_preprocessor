@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy import stats, interpolate, signal
+import pywt
 
 from sklearn.cluster import DBSCAN, OPTICS
 from sklearn.preprocessing import StandardScaler
@@ -67,14 +68,14 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 		
 	"""
 
-	if save_plots and not os.path.exists(save_plots_dir):
-		print("Setting up directory for saving plots at {}".format(save_plots_dir))
-		os.makedirs(save_plots_dir, exist_ok=True)
+	if save_plots:
+		fig, axs = plt.subplots(3, 1, sharex=True)
+	
+		if not os.path.exists(save_plots_dir):
+			print("Setting up directory for saving plots at {}".format(save_plots_dir))
+			os.makedirs(save_plots_dir, exist_ok=True)
 
 
-	rri_time_multiplier = 1000 if rri_in_ms else 1 # do we want RRI in ms or s
-	if timevec is None:
-		timevec = np.array(range(0, len(ecg_segment)))/512 * rri_time_multiplier
 
 
 	freq_dom_hrv = np.NaN
@@ -89,8 +90,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 	modification_report["n_RRI_suprathresh"] = np.NaN
 	modification_report["suprathresh_values"] = np.NaN
 	modification_report["notes"] = ""
-
-   
+ 
 	# <EXIT_CONDITION>
 	if (False not in pd.isnull(ecg_segment)):
 
@@ -100,29 +100,28 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 		return None, None, None, freq_dom_hrv, time_dom_hrv, modification_report
 	# </EXIT_CONDITION>
 
-	# <EXIT_CONDITION>
-	if (True in pd.isnull(ecg_segment)):
-
-		modification_report["excluded"] = True
-		modification_report["notes"] = "At least 1 (but not all) datapoint is NaN"
- 
-		return None, None, None, freq_dom_hrv, time_dom_hrv, modification_report
-	# </EXIT_CONDITION>
-   
-	# <EXIT_CONDITION>
-	# if there isn't enough data in the segment to calculate LF/HF
-	if len(ecg_segment) < ecg_srate * (60 * 2):
-
-		modification_report["excluded"] = True
-		modification_report["notes"] = "Not enough data recorded in this segment interval"
- 
-		return None, None, None, freq_dom_hrv, time_dom_hrv, modification_report
-	# </EXIT_CONDITION>
 
 
-	""" Apply Empirical Mode Decomposition (EMD) to detrend the ECG Signal (remove low freq drift) """
+	# we might have multiple ecg channels in our ecg segment
+	if len(ecg_segment.shape) > 1:
+		n_ecg_channels = ecg_segment.shape[0]
+	else:
+		n_ecg_channels = 1
 
-	if use_emd:  
+	
+	rri_time_multiplier = 1000 if rri_in_ms else 1 # do we want RRI in ms or s
+	if timevec is None:
+		if n_ecg_channels == 1:
+			timevec = np.array(range(0, len(ecg_segment)))/ecg_srate * rri_time_multiplier
+		else:
+			timevec = np.array(range(0, ecg_segment.shape[1]))/ecg_srate * rri_time_multiplier
+	
+	
+	if save_plots and n_ecg_channels == 1:
+		axs[0].plot(timevec, ecg_segment, c="lightgrey", label="Raw ECG Signal")
+
+	# Apply Empirical Mode Decomposition (EMD) to detrend the ECG Signal (remove low freq drift)
+	if use_emd and n_ecg_channels==1: 
 		
 		try:  
 			# perform EMD on the ecg_segment, and take ecg_segment as sum of IMFS 1-3; this is to remove low frequency drift from the signal, hopefully help R peak detection
@@ -150,12 +149,11 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 		ecg_emd = sum(imfs[[0, 1, 2]])
 
 		if save_plots:
-			fig, axs = plt.subplots(3, 1, sharex=True)
-			axs[0].plot(timevec, ecg_segment, c="lightgrey", label="Raw ECG Signal")
 			axs[0].plot(timevec, ecg_emd, c="lightcoral", label="ECG Signal w/ EMD Applied")
 
 		# replace the ecg_segment with the detrended signal
 		ecg_segment = ecg_emd
+
 
 
 	""" Get ECG RPeaks """
@@ -176,77 +174,275 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 	min_rpeaks = (27*segment_length_min)
 
 	if use_reflection:
-		# with reflection to remove edge effects
-		reflection_order = math.floor(len(ecg_segment) / 2)
-		ecg_reflected = np.concatenate(
-			(ecg_segment[reflection_order:0:-1], ecg_segment, ecg_segment[-2:len(ecg_segment) - reflection_order - 2:-1]))
 		
+		if n_ecg_channels == 1:
+			# with reflection to remove edge effects
+			reflection_order = math.floor(len(ecg_segment) / 2)
+			ecg_reflected = np.concatenate(
+				(ecg_segment[reflection_order:0:-1], ecg_segment, ecg_segment[-2:len(ecg_segment) - reflection_order - 2:-1]))
+			
 
-		# get rpeak locations, using a "segmenter algorithm" (algorithm to detect R peaks in ECG)
-		rpeaks = chosen_segmenter(signal=ecg_reflected, sampling_rate=ecg_srate)["rpeaks"]
-		# NOTE: biosppy provides other segmenters. method "biosppy.signals.ecg.ecg()" uses the hamilton segmenter.
-		# christov and hamilton are likely valid alternatives to engzee segmenter, but I haven't thoroughly tested.
-		# others (e.g ssf and gamboa) didn't seem great
-		
-		# how many rpeaks should we expect the alg to detect for a reflected piece of ecg_segment?
-			# if lowest bpm ever achieved was 27, expect 27 peaks per min, 27*5 for 5 min
-			# then use reflection order to work out how many we might expect in the length of reflected ECG we have
-		min_rpeaks = (27*segment_length_min)
-		min_rpeaks_in_reflected = min_rpeaks * (len(ecg_segment) / reflection_order) 
+			# get rpeak locations, using a "segmenter algorithm" (algorithm to detect R peaks in ECG)
+			rpeaks = chosen_segmenter(signal=ecg_reflected, sampling_rate=ecg_srate)["rpeaks"]
+			
+			# NOTE: biosppy provides other segmenters. method "biosppy.signals.ecg.ecg()" uses the hamilton segmenter.
+			# christov and hamilton are likely valid alternatives to engzee segmenter, but I haven't thoroughly tested.
+			# others (e.g ssf and gamboa) didn't seem great
+			# how many rpeaks should we expect the alg to detect for a reflected piece of ecg_segment?
+				# if lowest bpm ever achieved was 27, expect 27 peaks per min, 27*5 for 5 min
+				# then use reflection order to work out how many we might expect in the length of reflected ECG we have
+			min_rpeaks = (27*segment_length_min)
+			min_rpeaks_in_reflected = min_rpeaks * (len(ecg_segment) / reflection_order) 
 
-		"""
-		# if there isn't "enough" rpeaks, it may be possible that a certain segmenter is the problem
-		j = 0
-		while len(rpeaks) < min_rpeaks_in_reflected:
+			"""
+			# if there isn't "enough" rpeaks, it may be possible that a certain segmenter is the problem
+			j = 0
+			while len(rpeaks) < min_rpeaks_in_reflected:
 
-			chosen_segmenter = segmenters[sorted(list(segmenters.keys()))[j]] 
-			if chosen_segmenter != segmenters[use_segmenter]: # if it's not the one we tried in the first place
-				rpeaks = chosen_segmenter(signal=ecg_reflected, sampling_rate=ecg_srate)["rpeaks"]
-			j+=1
+				chosen_segmenter = segmenters[sorted(list(segmenters.keys()))[j]] 
+				if chosen_segmenter != segmenters[use_segmenter]: # if it's not the one we tried in the first place
+					rpeaks = chosen_segmenter(signal=ecg_reflected, sampling_rate=ecg_srate)["rpeaks"]
+				j+=1
 
-			# <EXIT_CONDITION>
-			# if none helped, then exit
-			if len(rpeaks) < min_rpeaks_in_reflected and j == len(list(segmenters.keys())):
+				# <EXIT_CONDITION>
+				# if none helped, then exit
+				if len(rpeaks) < min_rpeaks_in_reflected and j == len(list(segmenters.keys())):
+			 
+					modification_report["excluded"] = True
+					modification_report["notes"] = "Segmenters detected no Rpeaks"
+
+					return None, None, None, freq_dom_hrv, time_dom_hrv, modification_report
+				# </EXIT_CONDITION>
+			"""
+			
+			# <exit_condition>
+			if len(rpeaks) < min_rpeaks_in_reflected:
 		 
-				modification_report["excluded"] = True
-				modification_report["notes"] = "Segmenters detected no Rpeaks"
+				modification_report["excluded"] = true
+				modification_report["notes"] = f"segmenter ({use_segmenter}) detected not enough rpeaks ({len(rpeaks)} < {min_rpeaks_in_reflected}) in reflected rpeaks"
 
-				return None, None, None, freq_dom_hrv, time_dom_hrv, modification_report
-			# </EXIT_CONDITION>
-		"""
-		rpeaks = chosen_segmenter(signal=ecg_reflected, sampling_rate=ecg_srate)["rpeaks"]
-		# <EXIT_CONDITION>
-		if len(rpeaks) < min_rpeaks_in_reflected:
-	 
-			modification_report["excluded"] = True
-			modification_report["notes"] = f"Segmenter ({use_segmenter}) detected not enough Rpeaks ({len(rpeaks)} < {min_rpeaks_in_reflected}) in reflected Rpeaks"
-
-			return None, None, None, freq_dom_hrv, time_dom_hrv, modification_report
-		# </EXIT_CONDITION>
+				return none, none, none, freq_dom_hrv, time_dom_hrv, modification_report
+			# </exit_condition>
 
 
-		# need to chop off the reflected parts before and after original signal
-		original_begins = reflection_order
-		original_ends = original_begins + len(ecg_segment)-1
+			# need to chop off the reflected parts before and after original signal
+			original_begins = reflection_order
+			original_ends = original_begins + len(ecg_segment)-1
 
-		rpeaks_begins = find_nearest(rpeaks, original_begins)
-		rpeaks_ends = find_nearest(rpeaks, original_ends)
-		rpeaks = rpeaks[rpeaks_begins:rpeaks_ends]
+			rpeaks_begins = find_nearest(rpeaks, original_begins)
+			rpeaks_ends = find_nearest(rpeaks, original_ends)
+			rpeaks = rpeaks[rpeaks_begins:rpeaks_ends]
 
-		# get their position in the original
-		rpeaks = rpeaks - original_begins
+			# get their position in the original
+			rpeaks = rpeaks - original_begins
 
-		# find_nearest may return the first as an element before original_begins
-		# as we flipped, the last r peak of the flipped data put before original
-		# will be the negative of the first r peak in the original data
-		# as we are using argmin(), this will be returned first
-		# so, remove any negative indices (r peaks before original begins)
-		rpeaks = rpeaks[rpeaks > 0]
+			# find_nearest may return the first as an element before original_begins
+			# as we flipped, the last r peak of the flipped data put before original
+			# will be the negative of the first r peak in the original data
+			# as we are using argmin(), this will be returned first
+			# so, remove any negative indices (r peaks before original begins)
+			rpeaks = rpeaks[rpeaks > 0]
 
+		else: 	# if we have multiple ECG channels, we should decide which one will be best suited and use that
+	
+			# arrays for determining ecg channel to use	
+			rpeaks_candidates = []
+			candidates_scores = []
+			
+			# arrays for error checking etc once we've decided winning list
+			len_reflected_rpeaks = [] 
+			modification_reports_local = []
+			ecg_emds = []
+	
+			for ch in range(0, n_ecg_channels):
+				ecg_channel = ecg_segment[ch, :]		
+				modification_report_local = modification_report.copy()
+				
+
+	
+				reflection_order = math.floor(len(ecg_channel) / 2)
+				ecg_reflected = np.concatenate(
+					(ecg_channel[reflection_order:0:-1], ecg_channel, ecg_channel[-2:len(ecg_segment) - reflection_order - 2:-1]))
+				
+				if not all(np.isnan(ecg_reflected)): # this code mostly duplicated from somewhere below
+					# Apply Empirical Mode Decomposition (EMD) to detrend the ECG Signal (remove low freq drift)
+					if use_emd: 
+						
+						try:  
+							# perform EMD on the ecg_segment, and take ecg_segment as sum of IMFS 1-3; this is to remove low frequency drift from the signal, hopefully help R peak detection
+							imfs = emd.sift.sift(ecg_channel).T
+						except Exception as e:
+							# <EXIT_CONDITION>
+							modification_report_local["excluded"] = True
+							modification_report_local["notes"] = e
+
+							modification_reports_local.append(modification_report_local)
+							continue
+							# </EXIT_CONDITION>
+
+						# <EXIT_CONDITION>
+						# if not enough imfs can be detected (this can happen if the data is mostly zeros)
+						if len(imfs) < 3:
+
+							modification_report_local["excluded"] = True
+							modification_report_local["notes"] = "Less than 3 IMFs were produced by EMD"
+
+							modification_reports_local.append(modification_report_local)
+							continue
+						# </EXIT_CONDITION>
+
+
+						ecg_emd = sum(imfs[[0, 1, 2]])
+						ecg_emds.append(ecg_emd)
+
+						# replace the ecg_segment with the detrended signal
+						ecg_channel = ecg_emd
+						modification_reports_local.append(None)
+
+					rpeaks = chosen_segmenter(signal=ecg_reflected, sampling_rate=ecg_srate)["rpeaks"]
+					len_reflected_rpeaks.append(len(rpeaks))
+
+					original_begins = reflection_order
+					original_ends = original_begins + len(ecg_channel)-1
+
+					rpeaks_begins = find_nearest(rpeaks, original_begins)
+					rpeaks_ends = find_nearest(rpeaks, original_ends)
+					rpeaks = rpeaks[rpeaks_begins:rpeaks_ends]
+					rpeaks = rpeaks - original_begins
+					rpeaks = rpeaks[rpeaks > 0]
+					
+					rpeaks_candidates.append(rpeaks)
+
+					# get each QRS 	
+					beats = biosppy.signals.ecg.extract_heartbeats(ecg_channel, rpeaks, ecg_srate)["templates"] # get ECG signal a small amount of time around detected Rpeaks
+	
+					# create comparison wavelet, that looks like desired ECG waveform, according to https://uk.mathworks.com/help/wavelet/ug/r-wave-detection-in-the-ecg.html
+					_, comp_wl_y, comp_wl_x = pywt.Wavelet("sym4").wavefun(5)
+					comp_wl_y = -2*comp_wl_y
+
+					# determine how far each beat is from comparison wavelet
+					beats_distance = np.array([dtw(stats.zscore(beats[x]), stats.zscore(comp_wl_y), keep_internals=True).normalizedDistance for x in range(0, len(beats))])
+					
+					candidate_score = np.mean(beats_distance)
+					candidates_scores.append(candidate_score)
+			
+			winner_idx = np.argmin(candidates_scores) # we want the ecg with lowest mean distance from comparison wavelet			
+			print(f"WINNER: {winner_idx}")
+			rpeaks = rpeaks_candidates[winner_idx]
+ 
+			if save_plots:
+				axs[0].plot(timevec, ecg_segment[winner_idx, :], c="lightgrey", label="Raw ECG Signal")
+			
+			# emd-specific code
+			if use_emd and modification_reports_local[winner_idx] != None:
+				return None, None, None, freq_dom_hrv, time_dom_hrv, modification_reports_local[winner_idx]
+			if use_emd and save_plots:
+				axs[0].plot(timevec, ecg_emds[winner_idx], c="lightcoral", label="ECG Signal w/ EMD Applied")
+			
+
+			# for compatibility with later code
+			ecg_segment = ecg_segment[winner_idx, :] if not use_emd else ecg_emds[winner_idx]
+			reflection_order = math.floor(len(ecg_segment) / 2)
+			
+			min_rpeaks = (27*segment_length_min)
+			min_rpeaks_in_reflected = min_rpeaks * (len(ecg_segment) / reflection_order) 
+			
+			# <exit_condition>
+			if len_reflected_rpeaks[winner_idx] < min_rpeaks_in_reflected:
+		 
+				modification_report["excluded"] = true
+				modification_report["notes"] = f"segmenter ({use_segmenter}) detected not enough rpeaks ({len(rpeaks_len_reflection[winner_idx])} < {min_rpeaks_in_reflected}) in reflected rpeaks of winning ECG channel"
+
+				return none, none, none, freq_dom_hrv, time_dom_hrv, modification_report
+			# </exit_condition>
+
+	
 	elif not use_reflection: 
-	   
-		rpeaks = chosen_segmenter(signal=ecg_segment, sampling_rate=ecg_srate)["rpeaks"]
-  
+	  
+		if n_ecg_channels == 1: 
+			rpeaks = chosen_segmenter(signal=ecg_segment, sampling_rate=ecg_srate)["rpeaks"]
+	 
+		else:
+		
+			rpeaks_candidates = []
+			candidates_scores = []
+	
+			modification_reports_local = []
+			ecg_emds = []
+
+			for ch in range(0, n_ecg_channels):
+				ecg_channel = ecg_segment[ch, :]		
+				modification_report_local = modification_report.copy()
+				
+
+				if not all(np.isnan(ecg_channel)): # this code mostly duplicated from somewhere below AND in use_reflection above
+					if use_emd: 
+						
+						try:  
+							# perform EMD on the ecg_segment, and take ecg_segment as sum of IMFS 1-3; this is to remove low frequency drift from the signal, hopefully help R peak detection
+							imfs = emd.sift.sift(ecg_channel).T
+						except Exception as e:
+							# <EXIT_CONDITION>
+							modification_report_local["excluded"] = True
+							modification_report_local["notes"] = e
+
+							modification_reports_local.append(modification_report_local)
+							continue
+							# </EXIT_CONDITION>
+
+						# <EXIT_CONDITION>
+						# if not enough imfs can be detected (this can happen if the data is mostly zeros)
+						if len(imfs) < 3:
+
+							modification_report_local["excluded"] = True
+							modification_report_local["notes"] = "Less than 3 IMFs were produced by EMD"
+
+							modification_reports_local.append(modification_report_local)
+							continue
+						# </EXIT_CONDITION>
+
+
+						ecg_emd = sum(imfs[[0, 1, 2]])
+
+						ecg_emds.append(ecg_emd)
+
+						# replace the ecg_segment with the detrended signal
+						ecg_channel = ecg_emd
+						modification_reports_local.append(None)
+
+					rpeaks = chosen_segmenter(signal=ecg_channel, sampling_rate=ecg_srate)["rpeaks"]
+					rpeaks_candidates.append(rpeaks)
+
+					# get each QRS 	
+					beats = biosppy.signals.ecg.extract_heartbeats(ecg_channel, rpeaks, ecg_srate)["templates"] # get ECG signal a small amount of time around detected Rpeaks
+	
+					# create comparison wavelet, that looks like desired ECG waveform, according to https://uk.mathworks.com/help/wavelet/ug/r-wave-detection-in-the-ecg.html
+					_, comp_wl_y, comp_wl_x = pywt.Wavelet("sym4").wavefun(5)
+					comp_wl_y = -2*comp_wl_y
+
+					# determine how far each beat is from comparison wavelet
+					beats_distance = np.array([dtw(stats.zscore(beats[x]), stats.zscore(comp_wl_y), keep_internals=True).normalizedDistance for x in range(0, len(beats))])
+					
+					candidate_score = np.mean(beats_distance)
+					candidates_scores.append(candidate_score)
+			
+			winner_idx = np.argmin(candidates_scores) # we want the ecg with lowest mean distance from comparison wavelet			
+			print(f"WINNER: {winner_idx}")
+			rpeaks = rpeaks_candidates[winner_idx]
+ 
+			if save_plots:
+				axs[0].plot(timevec, ecg_segment[winner_idx, :], c="lightgrey", label="Raw ECG Signal")
+			
+			# emd-specific code
+			if use_emd and modification_reports_local[winner_idx] != None:
+				return None, None, None, freq_dom_hrv, time_dom_hrv, modification_reports_local[winner_idx]
+			if use_emd and save_plots:
+				axs[0].plot(timevec, ecg_emds[winner_idx], c="lightcoral", label="ECG Signal w/ EMD Applied")
+			
+			# for compatibility with later code
+			ecg_segment = ecg_segment[winner_idx, :] if not use_emd else ecg_emds[winner_idx]
+	
+ 
 		"""
 		j = 0
 		while len(rpeaks) < min_rpeaks:
@@ -276,6 +472,24 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 		# </EXIT_CONDITION>
 
 
+	# <EXIT_CONDITION>
+	if (True in pd.isnull(ecg_segment)):
+
+		modification_report["excluded"] = True
+		modification_report["notes"] = "At least 1 (but not all) datapoint is NaN"
+ 
+		return None, None, None, freq_dom_hrv, time_dom_hrv, modification_report
+	# </EXIT_CONDITION>
+   
+	# <EXIT_CONDITION>
+	# if there isn't enough data in the segment to calculate LF/HF
+	if len(ecg_segment) < ecg_srate * (60 * 2):
+
+		modification_report["excluded"] = True
+		modification_report["notes"] = "Not enough data recorded in this segment interval"
+ 
+		return None, None, None, freq_dom_hrv, time_dom_hrv, modification_report
+	# </EXIT_CONDITION>
 
 		
 	# correct candidate rpeaks to the maximum ECG value within a time tolerance (0.05s by default)
@@ -286,7 +500,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 
 		# look for noise in the ECG signal by checking if each detected QRS complex is similar enough to the average QRS in this segment
 		beats = biosppy.signals.ecg.extract_heartbeats(ecg_segment, rpeaks, ecg_srate)["templates"] # get ECG signal a small amount of time around detected Rpeaks
-		avg_beat = np.mean(beats, axis=0) # produce the average/'typical' beat within the segment
+		avg_beat = np.nanmean(beats, axis=0) # produce the average/'typical' beat within the segment
 		
 		# produce a vector of 1 value per QRS of how similar it is to the avg
 		# use dynamic time warping (DTW)
@@ -373,6 +587,9 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 		# </EXIT_CONDITION>
 
 
+
+
+
 	""" Calculate and correct R-R Intervals """
 	
 	rri = (np.diff(rpeaks) / ecg_srate) * rri_time_multiplier 
@@ -422,7 +639,8 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 		poincare = np.array([rri[:-1],rri[1:]], dtype=np.float32)
 
 		# in poincare plot, outliers should be far from a main cluster of valid RRIs. So use DBSCAN to detect outliers
-		db = DBSCAN(eps = (np.mean(rri_corrected) * DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER), min_samples=DBSCAN_MIN_SAMPLES).fit(poincare.T)
+		eps = (np.mean(rri_corrected) * DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER)	
+		db = DBSCAN(eps = eps, min_samples=DBSCAN_MIN_SAMPLES).fit(poincare.T)
 		labels = db.labels_ # -1 is outliers, >= 0 is a valid cluster
 
 		# every RRI except first & last will appear twice in poincare representation
@@ -444,6 +662,8 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 		if save_plots:
 			# plot poincare representation w/ outliers
 			fig2, ax2 = plt.subplots()
+			fig2.suptitle(f"{segment_idx}")
+			ax2.set_title(f"Mean RRI (corrected): {np.mean(rri_corrected)}, eps multiplier = {DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER}, eps = {eps}")
 			labels_text = ["Valid" if label >= 0 else "Outlier" for label in labels]
 			sns.scatterplot(x=rri[:-1], y=rri[1:], hue=labels_text, palette={"Valid": "#000000", "Outlier": "#FF0000"}, ax=ax2)
 			fig2.savefig(f"{save_plots_dir}/{save_plot_filename}_POINCARE", dpi=100)
@@ -628,7 +848,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 				else:
 					outlier_idx.append(j)
 		
-		Ts = (rpeaks / 512 * rri_time_multiplier) #= np.cumsum(rri_corrected)  
+		Ts = (rpeaks / ecg_srate * rri_time_multiplier) #= np.cumsum(rri_corrected)  
 		Ts_original = Ts.copy() # for plotting original RRIs	
 	
 		outlier_idx = np.array(sorted(set(outlier_idx))) # remove duplicates
