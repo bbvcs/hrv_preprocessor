@@ -21,12 +21,22 @@ import time
 import warnings
 
 
-
 def find_nearest(array, value):
 	# https://stackoverflow.com/questions/2566412/find-nearest-value-in-numpy-array (modified)
 	idx = np.nanargmin((np.abs(array - value)))
 
 	return idx
+
+def extract_from_pyHRV_tuple(tuple_as_str):
+    # for example, fft_log entries look like : '(8.901840598362377, 5.9300714514495, 5.228194636918156)' (strings, not tuple)
+    # so convert to a tuple of (8.901840598362377, 5.9300714514495, 5.228194636918156)
+    # (I think this is (VLF, LF, HF)
+
+    tuple_as_str = tuple_as_str[1:-2] # remove brackets
+    tuple_as_str = tuple_as_str.split(", ")
+
+    return tuple([float(s) for s in tuple_as_str])
+
 
 def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, segment_idx=0,
 					save_plots=False, save_plots_dir='saved_plots', save_plot_filename=math.floor(time.time()),
@@ -103,18 +113,19 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 
 
 	# we might have multiple ecg channels in our ecg segment
-	if len(ecg_segment.shape) > 1:
+	if len(ecg_segment.shape) > 1: # ndarray of one or multiple channels (shape = (k, n), where k is n of channel length and n is various channel length)
 		n_ecg_channels = ecg_segment.shape[0]
-	else:
+
+		if n_ecg_channels == 1: # 1 ecg channel like [[ecg,]] (shape = (1, n))
+			ecg_segment = ecg_segment[0, :] # convert it into non-nested 1d numpy array
+
+	else: # non-nested 1D numpy array, or python array (shape = (n,))
 		n_ecg_channels = 1
 
 	
 	rri_time_multiplier = 1000 if rri_in_ms else 1 # do we want RRI in ms or s
 	if timevec is None:
-		if n_ecg_channels == 1:
-			timevec = np.array(range(0, len(ecg_segment)))/ecg_srate * rri_time_multiplier
-		else:
-			timevec = np.array(range(0, ecg_segment.shape[1]))/ecg_srate * rri_time_multiplier
+		timevec = np.array(range(0, ecg_segment.shape[-1]))/ecg_srate * rri_time_multiplier
 	
 	
 	if save_plots and n_ecg_channels == 1:
