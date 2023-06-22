@@ -1032,10 +1032,10 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 						
 						RR = T - T_start
 						new_RRs.insert(0, RR)
-						print(f"\t{new_RRs}\tMU: {mu} SIGMA: {sigma}\ttries:{tries} rounds_at_max:{rounds_at_max}")	
+						#print(f"\t{new_RRs}\tMU: {mu} SIGMA: {sigma}\ttries:{tries} rounds_at_max:{rounds_at_max}")	
 						# every 4 tries, increase deviation by 5%
 						if tries % 4 == 0:
-							print(f"{gap}, {tries}")
+							#print(f"{gap}, {tries}")
 							if e_10 < MAX_E10:
 								e_10 = e_10 + 0.05
 								e_10 = min(e_10, MAX_E10)
@@ -1049,6 +1049,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 									break
 								rounds_at_max += 1
 							
+					print(f"\t{new_RRs}\tMU: {mu} SIGMA: {sigma}\ttries:{tries} rounds_at_max:{rounds_at_max}")	
 					print(new_RRs)
 					print("\n")
 
