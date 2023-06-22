@@ -1216,6 +1216,36 @@ def produce_hrv_dataframes(time_dom_hrvs, freq_dom_hrvs, modification_reports, s
 	time_dom_df = pd.DataFrame(time_dom_hrvs, index=segment_labels, columns=time_dom_keys)
 	freq_dom_df = pd.DataFrame(freq_dom_hrvs, index=segment_labels, columns=freq_dom_keys)
 
+	# make some adjustments
+	time_dom_df.drop(columns=["tinn_n", "tinn_m", "tinn", "nni_histogram"], inplace=True) # pyHRV throws warning that tinn calculation is faulty. 
+	freq_dom_df.drop(columns=["fft_bands", "fft_plot"], inplace=True)
+
+	splittable_columns = ['fft_peak', 'fft_abs', 'fft_rel', 'fft_log', 'fft_norm']	
+	for splittable_column in splittable_columns:
+		# vlf, lf and hf values for each of these properties are stored in tuple form (vlf, lf, hf) - not great
+
+
+		if splittable_column == "fft_norm": # TODO why does this only have 2 entries?
+			continue
+
+		# set up arrays for each frequency band
+		vlf = np.full(freq_dom_df.shape[0], fill_value=np.NaN, dtype=np.float64)
+		lf = np.full(freq_dom_df.shape[0], fill_value=np.NaN, dtype=np.float64)
+		hf = np.full(freq_dom_df.shape[0], fill_value=np.NaN, dtype=np.float64)
+
+		i = 0
+		for entry in freq_dom_df[splittable_column]:
+			if not pd.isnull(entry):
+				vlf[i] = entry[0]
+				lf[i] = entry[1]
+				hf[i] = entry[2]
+			i += 1
+
+		freq_dom_df[f"{splittable_column}_VLF"] = vlf
+		freq_dom_df[f"{splittable_column}_LF"] = lf
+		freq_dom_df[f"{splittable_column}_HF"] = hf
+
+	freq_dom_df.drop(columns=splittable_columns, inplace=True)
 
 
 	modification_report_df = pd.DataFrame({"segment_idx":   [i["seg_idx"] for i in modification_reports], 
