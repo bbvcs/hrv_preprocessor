@@ -229,7 +229,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 			# <exit_condition>
 			if len(rpeaks) < min_rpeaks_in_reflected:
 		 
-				modification_report["excluded"] = true
+				modification_report["excluded"] = True
 				modification_report["notes"] = f"segmenter ({use_segmenter}) detected not enough rpeaks ({len(rpeaks)} < {min_rpeaks_in_reflected}) in reflected rpeaks"
 
 				return none, none, none, freq_dom_hrv, time_dom_hrv, modification_report
@@ -361,7 +361,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 			# <exit_condition>
 			if len_reflected_rpeaks[winner_idx] < min_rpeaks_in_reflected:
 		 
-				modification_report["excluded"] = true
+				modification_report["excluded"] = True
 				modification_report["notes"] = f"segmenter ({use_segmenter}) detected not enough rpeaks ({len(rpeaks_len_reflection[winner_idx])} < {min_rpeaks_in_reflected}) in reflected rpeaks of winning ECG channel"
 
 				return none, none, none, freq_dom_hrv, time_dom_hrv, modification_report
