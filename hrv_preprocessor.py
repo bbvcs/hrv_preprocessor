@@ -20,6 +20,9 @@ import time
 
 import warnings
 
+# keys returned by pyHRV for HRV metrics
+time_dom_keys = np.array(['nni_counter', 'nni_mean', 'nni_min', 'nni_max', 'hr_mean', 'hr_min', 'hr_max', 'hr_std', 'nni_diff_mean', 'nni_diff_min', 'nni_diff_max', 'sdnn', 'sdnn_index', 'sdann', 'rmssd', 'sdsd', 'nn50', 'pnn50', 'nn20', 'pnn20', 'nni_histogram',     'tinn_n', 'tinn_m', 'tinn', 'tri_index'])
+freq_dom_keys = np.array(['fft_bands', 'fft_peak', 'fft_abs', 'fft_rel', 'fft_log', 'fft_norm', 'fft_ratio', 'fft_total', 'fft_plot', 'fft_nfft', 'fft_window', 'fft_resampling_frequency', 'fft_interpolation'])
 
 def find_nearest(array, value):
 	# https://stackoverflow.com/questions/2566412/find-nearest-value-in-numpy-array (modified)
@@ -1211,8 +1214,6 @@ def hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
 
 
 def produce_hrv_dataframes(time_dom_hrvs, freq_dom_hrvs, modification_reports, segment_labels):
-	time_dom_keys = np.array(['nni_counter', 'nni_mean', 'nni_min', 'nni_max', 'hr_mean', 'hr_min', 'hr_max', 'hr_std', 'nni_diff_mean', 'nni_diff_min', 'nni_diff_max', 'sdnn', 'sdnn_index', 'sdann', 'rmssd', 'sdsd', 'nn50', 'pnn50', 'nn20', 'pnn20', 'nni_histogram',     'tinn_n', 'tinn_m', 'tinn', 'tri_index'])
-	freq_dom_keys = np.array(['fft_bands', 'fft_peak', 'fft_abs', 'fft_rel', 'fft_log', 'fft_norm', 'fft_ratio', 'fft_total', 'fft_plot', 'fft_nfft', 'fft_window', 'fft_resampling_frequency', 'fft_interpolation'])
 	 
 	time_dom_df = pd.DataFrame(time_dom_hrvs, index=segment_labels, columns=time_dom_keys)
 	freq_dom_df = pd.DataFrame(freq_dom_hrvs, index=segment_labels, columns=freq_dom_keys)
