@@ -340,6 +340,16 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 					candidate_score = np.mean(beats_distance)
 					candidates_scores.append(candidate_score)
 			
+
+			# <exit_condition>
+			if len(candidates_scores) == 0:
+		 
+				modification_report["excluded"] = True
+				modification_report["notes"] = f"candidates_scores empty despite {n_ecg_channels} ECG channels present - probably all NaN or 0"
+
+				return None, None, None, freq_dom_hrv, time_dom_hrv, modification_report
+			# </exit_condition>
+
 			winner_idx = np.argmin(candidates_scores) # we want the ecg with lowest mean distance from comparison wavelet			
 			print(f"WINNER: {winner_idx}")
 			rpeaks = rpeaks_candidates[winner_idx]
@@ -439,7 +449,15 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 					
 					candidate_score = np.mean(beats_distance)
 					candidates_scores.append(candidate_score)
-			
+
+			# <exit_condition>
+			if len(candidates_scores) == 0:
+		 
+				modification_report["excluded"] = True
+				modification_report["notes"] = f"candidates_scores empty despite {n_ecg_channels} ECG channels present - probably all NaN or 0"
+
+				return None, None, None, freq_dom_hrv, time_dom_hrv, modification_report
+			# </exit_condition>
 			winner_idx = np.argmin(candidates_scores) # we want the ecg with lowest mean distance from comparison wavelet			
 			print(f"WINNER: {winner_idx}")
 			rpeaks = rpeaks_candidates[winner_idx]
