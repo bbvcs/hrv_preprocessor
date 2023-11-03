@@ -90,6 +90,7 @@ These methods have many parameters; see docstrings in the code, as well as `exam
 
 ### References
 [1] Z. Cai, C. Liu, G. Hongxiang, X. Wang, "An Open-Access Long-Term Wearable ECG Database for Premature Ventricular Contractions and Supraventricular Premature Beat Detection", *Journal of Medical Imaging and Health Informatics*, Nov. 2020. [Online] Available: [https://www.researchgate.net/publication/345142269_An_Open-Access_Long-Term_Wearable_ECG_Database_for_Premature_Ventricular_Contractions_and_Supraventricular_Premature_Beat_Detection](https://www.researchgate.net/publication/345142269_An_Open-Access_Long-Term_Wearable_ECG_Database_for_Premature_Ventricular_Contractions_and_Supraventricular_Premature_Beat_Detection)
+
 [2] Benchekroun M, Chevallier B, Istrate D, Zalc V, Lenne D. Preprocessing Methods for Ambulatory HRV Analysis Based on HRV Distribution, Variability and Characteristics (DVC). Sensors (Basel). 2022 Mar 3;22(5):1984. doi: 10.3390/s22051984. PMID: 35271128; PMCID: PMC8914897. 
 
 ### Author
