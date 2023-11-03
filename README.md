@@ -12,6 +12,12 @@ To demonstrate, publicly available [1] ECG data (~24h in length, 400Hz) from the
 
 Example outputs from Subject "A01" are available in the "*out*" directory of this repository, as well as an example plot (produced using *pyplot*) of the Frequency Domain LF/HF Ratio of this subject. All of these are produced by running the default *example_usage/py* script.
 
+### Issues
+- If you get a 'Python may not be configured for tkinter" error, see https://stackoverflow.com/questions/5459444/tkinter-python-may-not-be-configured-for-tk. 
+	- To fix on macOS, you can run 'brew install python-tk'
+- Errors related to the 'dtw()' function call may be caused by having both 'dtw' and 'dtw-python' libraries installed on your system. This code uses only the 'python-dtw' library, but both are imported as 'dtw' - uninstalling the 'dtw' library may help. You can see globally installed Python libraries using 'pip freeze'.
+- On segments less than/equal to 5 min in length, you will get a warning when pyHRV attempts to calculate SDANN, as this requires longer segmebnts (24h recommended?). You can safely ignore this.
+- You will get warnings regarding the TINN calculation. This doesn't appear to work in pyHRV currently. You can safely ignore this - TINN metrics are removed from the output dataframe.
 
 
 ### Setup and Running
@@ -20,8 +26,8 @@ I would recommend running on an Ubuntu/Debian based OS (should work with any Lin
 1. Download the TrainingSet Data from the link above (see **Data**), and extract the .zip into the same directory as the scripts; there should be a directory "*TrainingSet*", with a subdirectory "*data*"
 	- If you want to use your own data, inspect "**example_usage.py**", and modify so it loads your ECG data as a 1D NumPy array "*ecg*"
 2. Enter the following commands: `pipenv shell`, followed by `pipenv update`. This will setup a pipenv virtual environment, and install all necessary packages for the python scripts. Pipenv combines the "pip" python package manager and the "venv" virtual environment tool. Pipenv uses a "Pipfile" to keep track of dependencies for the project, this file is provided in this repository. For more info on pipenv (and how to install if you don't have it): https://pipenv.pypa.io/en/latest/
-3. Once you're in a pipenv shell, run *example_usage.py* using `python3.8 -i example_usage.py` (`-i` is optional, but will allow you to have the dataframes in an interactive shell once complete, so you can try out some more plots)
-
+3. Once you're in a pipenv shell, run *example_usage.py* using `python3 example_usage.py`
+ 
 ### How Preprocessing and HRV Calculation Works
 1. Break the ECG into n-minute long segments (by default, 5min)
 2. For each segment:
@@ -88,8 +94,8 @@ These methods have many parameters; see docstrings in the code, as well as `exam
 
 ### Author
 Billy C. Smith  
-bcsm@posteo.net  
-MSc Student @ Newcastle University  
-07/04/2023
+bcsm@posteo.net 
+PhD Student @ CNNP Lab, Newcastle University  
+Last updated: 03/10/2023
 
 

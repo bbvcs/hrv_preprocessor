@@ -18,7 +18,7 @@ import os
 import math
 import time 
 
-import warnings
+
 
 # keys returned by pyHRV for HRV metrics
 time_dom_keys = np.array(['nni_counter', 'nni_mean', 'nni_min', 'nni_max', 'hr_mean', 'hr_min', 'hr_max', 'hr_std', 'nni_diff_mean', 'nni_diff_min', 'nni_diff_max', 'sdnn', 'sdnn_index', 'sdann', 'rmssd', 'sdsd', 'nn50', 'pnn50', 'nn20', 'pnn20', 'nni_histogram',     'tinn_n', 'tinn_m', 'tinn', 'tri_index'])
@@ -49,7 +49,8 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 	Calculate HRV metrics for a segment of ECG, returning a tuple of ReturnTuples containing HRV Metrics and a Modification Report for this segment.
 
 	Args:
-		ecg_segment:                        (1D NumPy Array)    A segment (tested with 5min, likely to work for other lengths) of consecutive ECG samples.
+		ecg_segment:                        (1D/2D NumPy Array) A segment (tested with 5min, likely to work for other lengths) of consecutive ECG samples.
+									IF 2D, each channel must be a ROW, so shape should be (n_rows, channel_length)
 		ecg_srate:                          (int)               Sample rate that segment was recorded at (int)
 		segment_length_min:                 (float)             The length of the segment, in minutes (e.g 5.0 for 5 minutes)
 		timevec:                            (1D NumPy Array)    A vector with a time value for each ecg_segment sample - defaults to range(0, len(ecg_segment))  
@@ -1202,13 +1203,17 @@ def hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
 	freq_dom_hrvs = []
 	modification_reports = [] 
 
-	onsets = np.arange(0, len(ecg), (segment_length_min * 60) * ecg_srate, dtype=int)
+	onsets = np.arange(0, ecg.shape[1], (segment_length_min * 60) * ecg_srate, dtype=int)
 
 	for i in range(0, len(onsets)-1):
 		if verbose:
 			print(f"\r{i}/{len(onsets)-1}", end="")
 
-		segment = ecg[onsets[i]:onsets[i+1]] # TODO will this overflow
+		if len(ecg.shape) > 1:
+			segment = ecg[:, onsets[i]:onsets[i+1]]
+		else:
+			segment = ecg[onsets[i]:onsets[i+1]]
+
 
 		rpeaks, rri, rri_corrected, freq_dom_hrv, time_dom_hrv, modification_report = hrv_per_segment(
 					segment, ecg_srate, segment_length_min, timevec=None, segment_idx = i,

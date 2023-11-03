@@ -17,8 +17,10 @@ if __name__ == "__main__":
    # CSPC2020 ECG dataset ("TrainingSet"); 400Hz, ~24h in length, .mat format, subjects A01, A02, ... A10
    ecg_srate = 400
    print("Reading Sample Data ...")
-   ecg = io.loadmat("TrainingSet/data/A01.mat")["ecg"] # ecg just has to be a 1D NumPy Array, so load in whatever way is suitable for your data
+   ecg = io.loadmat("TrainingSet/data/A01.mat")["ecg"]
 
+   # ecg has to be either a 1D array, or in shape (n_rows, channel_length) (each row has to be ecg channel)
+   ecg = ecg.T # this data had each ecg channel as a column, so we transpose
 
    segment_length_min = 5.0
 
@@ -27,7 +29,7 @@ if __name__ == "__main__":
 
    # produce dataframes with hrv metrics per segment
    time_dom_df, freq_dom_df, modification_report_df = hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
-            save_plots=False, save_plots_dir="saved_plots",
+            save_plots=True, save_plots_dir="saved_plots",
             use_emd=True, use_reflection=True, use_segmenter="engZee", remove_noisy_beats=True, remove_noisy_RRI=True, rri_in_ms = True,
             QRS_MAX_DIST_THRESH = 0.30, DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER = 0.04, DBSCAN_MIN_SAMPLES = 100, rng=rng) 
 

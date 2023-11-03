@@ -14,8 +14,6 @@ emd = "*"
 dtw-python = "*"
 scikit-learn = "*"
 seaborn = "*"
+pywavelets = "*"
 
 [dev-packages]
-
-[requires]
-python_version = "3.8"
