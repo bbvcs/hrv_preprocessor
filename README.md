@@ -16,7 +16,7 @@ Example outputs from Subject "A01" are available in the "*out*" directory of thi
 - If you get a 'Python may not be configured for tkinter" error, see https://stackoverflow.com/questions/5459444/tkinter-python-may-not-be-configured-for-tk. 
 	- To fix on macOS, you can run 'brew install python-tk'
 - Errors related to the 'dtw()' function call may be caused by having both 'dtw' and 'dtw-python' libraries installed on your system. This code uses only the 'python-dtw' library, but both are imported as 'dtw' - uninstalling the 'dtw' library may help. You can see globally installed Python libraries using 'pip freeze'.
-- On segments less than/equal to 5 min in length, you will get a warning when pyHRV attempts to calculate SDANN, as this requires longer segmebnts (24h recommended?). You can safely ignore this.
+- On segments less than/equal to 5 min in length, you will get a warning when pyHRV attempts to calculate SDANN, as this requires longer segments (24h recommended?). You can safely ignore this.
 - You will get warnings regarding the TINN calculation. This doesn't appear to work in pyHRV currently. You can safely ignore this - TINN metrics are removed from the output dataframe.
 
 
@@ -43,7 +43,7 @@ I would recommend running on an Ubuntu/Debian based OS (should work with any Lin
         - Produce a Poincare representation (each RRI paired with the next RRI) of the RRI segment. Valid RRIs will form a cluster on a scatterplot of this, whereas outliers/spikes will be distant from this cluster.
         - Use DBSCAN to find any outliers not belonging to the main cluster.
         - As all RRI (except the first and last) will appear twice in the Poincare representation, class any RRI that are an outlier in both instances as outliers/spikes.
-        - Interpolate points we have determined as outliers.  
+        - Correct outliers using an implementation of the non-deterministic 'DVC' method as described in [2].  
 
 3. NaN Exit Conditions
     - There are some cases where we would want to discard a segment from HRV calculation.
@@ -90,7 +90,7 @@ These methods have many parameters; see docstrings in the code, as well as `exam
 
 ### References
 [1] Z. Cai, C. Liu, G. Hongxiang, X. Wang, "An Open-Access Long-Term Wearable ECG Database for Premature Ventricular Contractions and Supraventricular Premature Beat Detection", *Journal of Medical Imaging and Health Informatics*, Nov. 2020. [Online] Available: [https://www.researchgate.net/publication/345142269_An_Open-Access_Long-Term_Wearable_ECG_Database_for_Premature_Ventricular_Contractions_and_Supraventricular_Premature_Beat_Detection](https://www.researchgate.net/publication/345142269_An_Open-Access_Long-Term_Wearable_ECG_Database_for_Premature_Ventricular_Contractions_and_Supraventricular_Premature_Beat_Detection)
-
+[2] Benchekroun M, Chevallier B, Istrate D, Zalc V, Lenne D. Preprocessing Methods for Ambulatory HRV Analysis Based on HRV Distribution, Variability and Characteristics (DVC). Sensors (Basel). 2022 Mar 3;22(5):1984. doi: 10.3390/s22051984. PMID: 35271128; PMCID: PMC8914897. 
 
 ### Author
 Billy C. Smith  
