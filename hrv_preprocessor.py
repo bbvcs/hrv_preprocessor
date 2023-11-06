@@ -1181,6 +1181,7 @@ def hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
 
 	Args:
 		ecg:                                (NumPy ndarray)     Long-term ECG recording, that we will break into segments.
+																Shape should be (n_rows, channel_length)
 		ecg_srate:                          (int)               Sample rate of the ECG recording
 		segment_length_min:                 (float)             The length of each segment, in minutes (e.g 5.0 for 5 minutes, 0.5 for 30 seconds)
 		verbose:                            (bool)              Print progress
@@ -1197,13 +1198,23 @@ def hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
 	if True in np.isnan(ecg):
 		raise Exception("ECG must be a consecutive recording, with no NaN.")
 
+	if isinstance(ecg, list):
+		ecg = np.array(ecg)
+		channel_length = len(ecg)
+	if len(ecg.shape) > 1:
+		if ecg.shape[1] == 1 and ecg.shape[0] != 1:
+			ecg = ecg.T
+
+		channel_length = ecg.shape[1]
+
+
 
 	# store 
 	time_dom_hrvs = []
 	freq_dom_hrvs = []
 	modification_reports = [] 
 
-	onsets = np.arange(0, ecg.shape[1], (segment_length_min * 60) * ecg_srate, dtype=int)
+	onsets = np.arange(0, channel_length, (segment_length_min * 60) * ecg_srate, dtype=int)
 
 	for i in range(0, len(onsets)-1):
 		if verbose:
