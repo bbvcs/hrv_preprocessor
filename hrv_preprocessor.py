@@ -1201,6 +1201,9 @@ def hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
 	if isinstance(ecg, list):
 		ecg = np.array(ecg)
 		channel_length = len(ecg)
+	elif isinstance(ecg, pd.Series) or isinstance(ecg, pd.DataFrame):
+		ecg = ecg.to_numpy()
+
 	if len(ecg.shape) > 1:
 		if ecg.shape[1] == 1 and ecg.shape[0] != 1:
 			ecg = ecg.T
