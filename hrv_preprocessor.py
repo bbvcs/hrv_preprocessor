@@ -1318,9 +1318,9 @@ def save_hrv_dataframes(time_dom_df, freq_dom_df, modification_report_df, save_d
 
 def load_hrv_dataframes(save_dfs_dir="out"):
    
-	time_dom_df = pd.read_csv(f"{save_dfs_dir}/TIMEDOM.csv")
-	freq_dom_df = pd.read_csv(f"{save_dfs_dir}/FREQDOM.csv")
-	modification_report_df = pd.read_csv(f"{save_dfs_dir}/MODIFICATION_REPORT.csv")
+	time_dom_df = pd.read_csv(f"{save_dfs_dir}/TIMEDOM.csv", index_col=0)
+	freq_dom_df = pd.read_csv(f"{save_dfs_dir}/FREQDOM.csv", index_col=0)
+	modification_report_df = pd.read_csv(f"{save_dfs_dir}/MODIFICATION_REPORT.csv", index_col=0)
 
 	return time_dom_df, freq_dom_df, modification_report_df
 
