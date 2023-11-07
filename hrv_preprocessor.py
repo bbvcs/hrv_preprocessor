@@ -1236,8 +1236,16 @@ def hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
 					QRS_MAX_DIST_THRESH = QRS_MAX_DIST_THRESH, DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER = DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER, DBSCAN_MIN_SAMPLES=DBSCAN_MIN_SAMPLES, rng=rng
 					)
 
-		time_dom_hrvs.append(time_dom_hrv)
-		freq_dom_hrvs.append(freq_dom_hrv)
+		if not isinstance(freq_dom_hrv, float):
+			freq_dom_hrvs.append(np.array(freq_dom_hrv, dtype="object"))
+		else:
+			freq_dom_hrvs.append(np.full(shape=freq_dom_keys.shape, fill_value=np.NaN))
+
+		if not isinstance(time_dom_hrv, float):
+			time_dom_hrvs.append(np.array(time_dom_hrv))
+		else:
+			time_dom_hrvs.append(np.full(shape=time_dom_keys.shape, fill_value=np.NaN))
+
 		modification_reports.append(modification_report)
 	
 	
