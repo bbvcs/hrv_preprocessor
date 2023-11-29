@@ -18,7 +18,7 @@ import os
 import math
 import time 
 
-
+import warnings
 
 # keys returned by pyHRV for HRV metrics
 time_dom_keys = np.array(['nni_counter', 'nni_mean', 'nni_min', 'nni_max', 'hr_mean', 'hr_min', 'hr_max', 'hr_std', 'nni_diff_mean', 'nni_diff_min', 'nni_diff_max', 'sdnn', 'sdnn_index', 'sdann', 'rmssd', 'sdsd', 'nn50', 'pnn50', 'nn20', 'pnn20', 'nni_histogram',     'tinn_n', 'tinn_m', 'tinn', 'tri_index'])
@@ -44,13 +44,12 @@ def extract_from_pyHRV_tuple(tuple_as_str):
 def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, segment_idx=0,
 					save_plots=False, save_plots_dir='saved_plots', save_plot_filename=math.floor(time.time()),
 					use_emd=True, use_reflection=True, use_segmenter="engzee", remove_noisy_beats=True, remove_noisy_RRI=True, rri_in_ms = True,
-					QRS_MAX_DIST_THRESH = 0.30, DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER = 0.25, DBSCAN_MIN_SAMPLES = 100, rng=np.random.default_rng()): 
+					QRS_MAX_DIST_THRESH = 0.30, DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER = 0.25, DBSCAN_MIN_SAMPLES = 100, rng=np.random.default_rng(), ignore_warnings=False): 
 	"""
 	Calculate HRV metrics for a segment of ECG, returning a tuple of ReturnTuples containing HRV Metrics and a Modification Report for this segment.
 
 	Args:
-		ecg_segment:                        (1D/2D NumPy Array) A segment (tested with 5min, likely to work for other lengths) of consecutive ECG samples.
-									IF 2D, each channel must be a ROW, so shape should be (n_rows, channel_length)
+		ecg_segment:                        (1D NumPy Array)    A segment (tested with 5min, likely to work for other lengths) of consecutive ECG samples.
 		ecg_srate:                          (int)               Sample rate that segment was recorded at (int)
 		segment_length_min:                 (float)             The length of the segment, in minutes (e.g 5.0 for 5 minutes)
 		timevec:                            (1D NumPy Array)    A vector with a time value for each ecg_segment sample - defaults to range(0, len(ecg_segment))  
@@ -68,6 +67,7 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 		DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER  (float)             Episilon of DBSCAN algorithm for finding RRI outliers (see remove_noisy_RRI) uses the mean of RRI in that segment multiplied by this value.
 		DBSCAN_MIN_SAMPLES                  (int)               Min samples/min points parameter for DBSCAN when finding RRI outliers (see remove_noisy_RRI).
 		rng				    (numpy.random._generator.Generator) Provided as param so the same RNG can be used for all calls to hrv_per_segment(), if reproducability is important.
+		ignore_warnings			    (bool)		Ignore warnings when calculating HRV metrics (best to leave as False, but can clog up output)
 
 	Returns:
 		- rpeaks, original rri and rri (corrected unless disabled by param, if so same as original rri) used for HRV calculation
@@ -1153,18 +1153,22 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 
 
 	""" Calculate HRV Metrics """
-  
-	try:
-		freq_dom_hrv = pyhrv.frequency_domain.welch_psd(nni=rri_corrected, show=False)
-	except Exception:	
-		modification_report["notes"] += ". Frequency domain calc failed - INVESTIGATE"
-		freq_dom_hrv = np.NaN
+ 
+	with warnings.catch_warnings():
+		if ignore_warnings==True:
+			warnings.simplefilter("ignore")		
+ 
+		try:
+			freq_dom_hrv = pyhrv.frequency_domain.welch_psd(nni=rri_corrected, show=False)
+		except Exception:	
+			modification_report["notes"] += ". Frequency domain calc failed - INVESTIGATE"
+			freq_dom_hrv = np.NaN
 
-	try:
-		time_dom_hrv = pyhrv.time_domain.time_domain(nni=rri_corrected, sampling_rate = ecg_srate, show=False, plot=False)
-	except ZeroDivisionError: # temporary until bug fixed in sdnn_index()
-		modification_report["notes"] += ". Zero Division Error (probably bug in sdnn_index()), so time domain excluded."
-		time_dom_hrv = np.NaN
+		try:
+			time_dom_hrv = pyhrv.time_domain.time_domain(nni=rri_corrected, sampling_rate = ecg_srate, show=False, plot=False)
+		except ZeroDivisionError: # temporary until bug fixed in sdnn_index()
+			modification_report["notes"] += ". Zero Division Error (probably bug in sdnn_index()), so time domain excluded."
+			time_dom_hrv = np.NaN
 
 	plt.close("all")
 	
@@ -1181,7 +1185,6 @@ def hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
 
 	Args:
 		ecg:                                (NumPy ndarray)     Long-term ECG recording, that we will break into segments.
-																Shape should be (n_rows, channel_length)
 		ecg_srate:                          (int)               Sample rate of the ECG recording
 		segment_length_min:                 (float)             The length of each segment, in minutes (e.g 5.0 for 5 minutes, 0.5 for 30 seconds)
 		verbose:                            (bool)              Print progress
@@ -1198,36 +1201,19 @@ def hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
 	if True in np.isnan(ecg):
 		raise Exception("ECG must be a consecutive recording, with no NaN.")
 
-	if isinstance(ecg, list):
-		ecg = np.array(ecg)
-		channel_length = len(ecg)
-	elif isinstance(ecg, pd.Series) or isinstance(ecg, pd.DataFrame):
-		ecg = ecg.to_numpy()
-
-	if len(ecg.shape) > 1:
-		if ecg.shape[1] == 1 and ecg.shape[0] != 1:
-			ecg = ecg.T
-
-		channel_length = ecg.shape[1]
-
-
 
 	# store 
 	time_dom_hrvs = []
 	freq_dom_hrvs = []
 	modification_reports = [] 
 
-	onsets = np.arange(0, channel_length, (segment_length_min * 60) * ecg_srate, dtype=int)
+	onsets = np.arange(0, len(ecg), (segment_length_min * 60) * ecg_srate, dtype=int)
 
 	for i in range(0, len(onsets)-1):
 		if verbose:
 			print(f"\r{i}/{len(onsets)-1}", end="")
 
-		if len(ecg.shape) > 1:
-			segment = ecg[:, onsets[i]:onsets[i+1]]
-		else:
-			segment = ecg[onsets[i]:onsets[i+1]]
-
+		segment = ecg[onsets[i]:onsets[i+1]] # TODO will this overflow
 
 		rpeaks, rri, rri_corrected, freq_dom_hrv, time_dom_hrv, modification_report = hrv_per_segment(
 					segment, ecg_srate, segment_length_min, timevec=None, segment_idx = i,
@@ -1236,16 +1222,8 @@ def hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
 					QRS_MAX_DIST_THRESH = QRS_MAX_DIST_THRESH, DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER = DBSCAN_RRI_EPSILON_MEAN_MULTIPLIER, DBSCAN_MIN_SAMPLES=DBSCAN_MIN_SAMPLES, rng=rng
 					)
 
-		if not isinstance(freq_dom_hrv, float):
-			freq_dom_hrvs.append(np.array(freq_dom_hrv, dtype="object"))
-		else:
-			freq_dom_hrvs.append(np.full(shape=freq_dom_keys.shape, fill_value=np.NaN))
-
-		if not isinstance(time_dom_hrv, float):
-			time_dom_hrvs.append(np.array(time_dom_hrv))
-		else:
-			time_dom_hrvs.append(np.full(shape=time_dom_keys.shape, fill_value=np.NaN))
-
+		time_dom_hrvs.append(time_dom_hrv)
+		freq_dom_hrvs.append(freq_dom_hrv)
 		modification_reports.append(modification_report)
 	
 	
@@ -1318,9 +1296,9 @@ def save_hrv_dataframes(time_dom_df, freq_dom_df, modification_report_df, save_d
 
 def load_hrv_dataframes(save_dfs_dir="out"):
    
-	time_dom_df = pd.read_csv(f"{save_dfs_dir}/TIMEDOM.csv", index_col=0)
-	freq_dom_df = pd.read_csv(f"{save_dfs_dir}/FREQDOM.csv", index_col=0)
-	modification_report_df = pd.read_csv(f"{save_dfs_dir}/MODIFICATION_REPORT.csv", index_col=0)
+	time_dom_df = pd.read_csv(f"{save_dfs_dir}/TIMEDOM.csv")
+	freq_dom_df = pd.read_csv(f"{save_dfs_dir}/FREQDOM.csv")
+	modification_report_df = pd.read_csv(f"{save_dfs_dir}/MODIFICATION_REPORT.csv")
 
 	return time_dom_df, freq_dom_df, modification_report_df
 
