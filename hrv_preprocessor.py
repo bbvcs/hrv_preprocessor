@@ -90,6 +90,16 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 			os.makedirs(save_plots_dir, exist_ok=True)
 
 
+	# TODO; this code is duplicated in hrv_whole_recording
+	# how many channels are in the ecg segment?
+	if len(ecg_segment.shape) > 1:  # ndarray of one or multiple channels (shape = (k, n), where k is n of channel length and n is various channel length)
+		n_ecg_channels = ecg_segment.shape[0]
+
+		if n_ecg_channels == 1:  # 1 ecg channel like [[ecg,]] (shape = (1, n))
+			ecg_segment = ecg_segment[0, :]  # convert it into non-nested 1d numpy array
+
+	else:  # non-nested 1D numpy array, or python array (shape = (n,))
+		n_ecg_channels = 1
 
 
 	freq_dom_hrv = np.NaN
@@ -113,18 +123,6 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
  
 		return None, None, None, freq_dom_hrv, time_dom_hrv, modification_report
 	# </EXIT_CONDITION>
-
-
-
-	# we might have multiple ecg channels in our ecg segment
-	if len(ecg_segment.shape) > 1: # ndarray of one or multiple channels (shape = (k, n), where k is n of channel length and n is various channel length)
-		n_ecg_channels = ecg_segment.shape[0]
-
-		if n_ecg_channels == 1: # 1 ecg channel like [[ecg,]] (shape = (1, n))
-			ecg_segment = ecg_segment[0, :] # convert it into non-nested 1d numpy array
-
-	else: # non-nested 1D numpy array, or python array (shape = (n,))
-		n_ecg_channels = 1
 
 	
 	rri_time_multiplier = 1000 if rri_in_ms else 1 # do we want RRI in ms or s
@@ -1201,19 +1199,45 @@ def hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
 	if True in np.isnan(ecg):
 		raise Exception("ECG must be a consecutive recording, with no NaN.")
 
+	# get ecg in ndarray format
+	if isinstance(ecg, list):
+		ecg = np.ndarray(ecg)
+	elif isinstance(ecg, pd.Series):
+		ecg = ecg.to_numpy()
+
+	# what is the length of an ecg channel?
+	if len(ecg.shape) == 2:
+		channel_length = ecg.shape[1]
+	else:
+		channel_length = len(ecg)
+
+	# TODO; this code is duplicated in hrv_per_segment
+	# how many channels are in the ecg?
+	if len(ecg.shape) > 1:  # ndarray of one or multiple channels (shape = (k, n), where k is n of channel length and n is various channel length)
+		n_ecg_channels = ecg.shape[0]
+
+		if n_ecg_channels == 1:  # 1 ecg channel like [[ecg,]] (shape = (1, n))
+			ecg = ecg[0, :]  # convert it into non-nested 1d numpy array
+
+	else:  # non-nested 1D numpy array, or python array (shape = (n,))
+		n_ecg_channels = 1
 
 	# store 
 	time_dom_hrvs = []
 	freq_dom_hrvs = []
 	modification_reports = [] 
 
-	onsets = np.arange(0, len(ecg), (segment_length_min * 60) * ecg_srate, dtype=int)
+	onsets = np.arange(0, channel_length, (segment_length_min * 60) * ecg_srate, dtype=int)
 
 	for i in range(0, len(onsets)-1):
 		if verbose:
 			print(f"\r{i}/{len(onsets)-1}", end="")
 
-		segment = ecg[onsets[i]:onsets[i+1]] # TODO will this overflow
+		if n_ecg_channels == 1:
+			segment = ecg[onsets[i]:onsets[i+1]] # TODO will this overflow
+		else:
+			segment = ecg[:, onsets[i]:onsets[i+1]]
+
 
 		rpeaks, rri, rri_corrected, freq_dom_hrv, time_dom_hrv, modification_report = hrv_per_segment(
 					segment, ecg_srate, segment_length_min, timevec=None, segment_idx = i,
