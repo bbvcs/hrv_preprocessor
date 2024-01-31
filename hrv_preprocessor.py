@@ -102,8 +102,8 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 		n_ecg_channels = 1
 
 
-	freq_dom_hrv = np.NaN
-	time_dom_hrv = np.NaN
+	freq_dom_hrv = np.full_like(freq_dom_keys, fill_value=np.NaN, dtype=np.float16)
+	time_dom_hrv = np.full_like(time_dom_keys, fill_value=np.NaN, dtype=np.float16)
 	
 	# keep a report of what happens to this to this segment
 	modification_report = {}
@@ -1160,13 +1160,13 @@ def hrv_per_segment(ecg_segment, ecg_srate, segment_length_min, timevec=None, se
 			freq_dom_hrv = pyhrv.frequency_domain.welch_psd(nni=rri_corrected, show=False)
 		except Exception:	
 			modification_report["notes"] += ". Frequency domain calc failed - INVESTIGATE"
-			freq_dom_hrv = np.NaN
+			#freq_dom_hrv = np.NaN #not necessary as initialised as full NaN
 
 		try:
 			time_dom_hrv = pyhrv.time_domain.time_domain(nni=rri_corrected, sampling_rate = ecg_srate, show=False, plot=False)
 		except ZeroDivisionError: # temporary until bug fixed in sdnn_index()
 			modification_report["notes"] += ". Zero Division Error (probably bug in sdnn_index()), so time domain excluded."
-			time_dom_hrv = np.NaN
+			#time_dom_hrv = np.NaN
 
 	plt.close("all")
 	
@@ -1196,8 +1196,8 @@ def hrv_whole_recording(ecg, ecg_srate, segment_length_min, verbose = True,
 	"""
 
 
-	if True in np.isnan(ecg):
-		raise Exception("ECG must be a consecutive recording, with no NaN.")
+	#if True in np.isnan(ecg):
+	#	raise Exception("ECG must be a consecutive recording, with no NaN.")
 
 	# get ecg in ndarray format
 	if isinstance(ecg, list):
